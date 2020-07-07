@@ -76,6 +76,8 @@ public interface JingleRequestHandler
     XMPPError onSessionAccept(JingleSession jingleSession,
                          List<ContentPacketExtension> answer);
 
+    XMPPError onSessionTerminate(JingleSession jingleSession, JingleIQ iq);
+
     /**
      * Callback fired when 'session-info' is received from the client.
      *

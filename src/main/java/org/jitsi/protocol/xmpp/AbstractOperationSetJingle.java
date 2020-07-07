@@ -307,6 +307,9 @@ public abstract class AbstractOperationSetJingle
         case SESSION_INFO:
             error = requestHandler.onSessionInfo(session, iq);
             break;
+        case SESSION_TERMINATE:
+            error = requestHandler.onSessionTerminate(session, iq);
+            break;
         case TRANSPORT_ACCEPT:
             error = requestHandler.onTransportAccept(session, iq.getContentList());
             break;
@@ -577,20 +580,22 @@ public abstract class AbstractOperationSetJingle
                                  Reason           reason,
                                  String           message)
     {
-        logger.info("Terminate session: " + session.getAddress());
-
-        // we do not send session-terminate as muc addresses are invalid at this
-        // point
-        // FIXME: but there is also connection address available
-        JingleIQ terminate
-            = JinglePacketFactory.createSessionTerminate(
+        logger.info("Terminate session: " + session.getAddress() + ", reason: " + reason);
+        // FIXME use boolean flag instead of reason to skip sending?
+        if (reason != null) {
+            // we do not send session-terminate as muc addresses are invalid at this
+            // point
+            // FIXME: but there is also connection address available
+            JingleIQ terminate
+                    = JinglePacketFactory.createSessionTerminate(
                     getOurJID(),
                     session.getAddress(),
                     session.getSessionID(),
                     reason,
                     message);
 
-        getConnection().sendStanza(terminate);
+            getConnection().sendStanza(terminate);
+        }
 
         sessions.remove(session.getSessionID());
     }

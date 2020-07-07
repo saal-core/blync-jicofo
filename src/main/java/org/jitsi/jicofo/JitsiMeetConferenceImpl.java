@@ -1326,6 +1326,8 @@ public class JitsiMeetConferenceImpl
                     participant.getSourcesCopy(),
                     participant.getSourceGroupsCopy(),
                     false /* no JVB update - will expire */);
+
+                participant.setJingleSession(null);
             }
 
             bridgeSession = participant.terminateBridgeSession();
@@ -1476,6 +1478,55 @@ public class JitsiMeetConferenceImpl
         return onSessionAcceptInternal(jingleSession, answer);
     }
 
+    @Override
+    public XMPPError onSessionTerminate(JingleSession session, JingleIQ iq)
+    {
+        Jid address = session.getAddress();
+        Participant participant = findParticipantForJingleSession(session);
+
+        // FIXME: (duplicate) there's very similar logic in onSessionAccept
+        if (participant == null)
+        {
+            String errorMsg = "No session for " + address;
+
+            logger.warn("onSessionInfo: " + errorMsg);
+
+            return XMPPError.from(
+                    XMPPError.Condition.item_not_found, errorMsg).build();
+        }
+
+        BridgeSessionPacketExtension bsPE
+                = iq.getExtension(
+                    BridgeSessionPacketExtension.ELEMENT_NAME,
+                    BridgeSessionPacketExtension.NAMESPACE);
+        String bridgeSessionId = bsPE != null ? bsPE.getId() : null;
+        BridgeSession bridgeSession = findBridgeSession(participant);
+
+        if (bridgeSession != null && bridgeSession.id.equals(bridgeSessionId))
+        {
+            logger.info(String.format(
+                    "Received session-terminate from %s, session: %s",
+                    address,
+                    bridgeSession));
+
+            terminateParticipant(participant, null, null);
+            participants.add(participant);
+
+            // FIXME: not sure about start muted things
+            inviteParticipant(participant, false, hasToStartMuted(participant, false));
+        }
+        else
+        {
+            logger.info(String.format(
+                    "Ignored session-terminate for invalid session,"
+                            + " participant: %s, bridge session ID: %s",
+                    address,
+                    bridgeSessionId));
+        }
+
+        return null;
+    }
+
     /**
      * Will re-allocate channels on the bridge for participant who signals ICE
      * state 'failed'. New transport is sent in the 'transport-info' message
@@ -1523,7 +1574,7 @@ public class JitsiMeetConferenceImpl
         String bridgeSessionId = bsPE != null ? bsPE.getId() : null;
         BridgeSession bridgeSession = findBridgeSession(participant);
 
-        if (bridgeSession != null)
+        if (bridgeSession != null && bridgeSession.id.equals(bridgeSessionId))
         {
             logger.info(String.format(
                     "Received ICE failed notification from %s, session: %s",
