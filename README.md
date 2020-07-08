@@ -117,24 +117,24 @@ configured with the jitsi-meet scripts, then you can find the certificate in:
 
 ### How to run it
 * Dockerfile
-    * define the env vars (config/.env file)
+    * define the env vars (.env file)
     * build the image
     ```
         docker build -t saal-meeting-jicofo .
     ```
     * run the container 
     ```
-        docker run --env-file config/.env --name saal-meeting-jicofo --network saal_jitsi -v $(pwd)/config/runtime/jicofo:/config saal-meeting-jicofo
+        docker run --env-file .env --name saal-meeting-jicofo --network saal_jitsi -v $(pwd)/config/runtime/jicofo:/config saal-meeting-jicofo
     ```
 
 * DockerCompose
-    * define the env vars (config/.env file)
+    * define the env vars (.env file)
     * build the image
     ```
         docker-compose build
     ```
     * run the containers 
     ```
-        docker-compose --env-file config/.env up -d
+        docker-compose --env-file .env up -d
     ``` 
 > Make sure to check the network that you are running on
