@@ -182,7 +182,9 @@ public class ShutdownTest
         // Request for active conference - should reply with ready
         ConferenceIq activeConfRequest = new ConferenceIq();
         activeConfRequest.setRoom(roomName);
-
+        EntityBareJid from = JidCreate.entityBareFrom(
+                "g8rhpgypyh9jx@guest.vmeet.saal.ai/fBiCai6s");
+        activeConfRequest.setFrom(from);
         IQ result = focusComponent.handleIQSetImpl(
             IQUtils.convert(activeConfRequest));
 
