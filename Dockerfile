@@ -2,8 +2,8 @@
 FROM maven as build-phase
 COPY . /app
 WORKDIR /app
-RUN mvn dependency:resolve
-RUN mvn clean package
+RUN mvn dependency:go-offline
+RUN mvn package
 # RUN mvn clean package -DskipTests
 
 # #################################### RUN STAGE ####################################
@@ -13,7 +13,7 @@ COPY --from=build-phase /app /app
 
 WORKDIR /
 
-RUN cp /app/target/jicofo-1.1-SNAPSHOT-jar-with-dependencies.jar /usr/share/jicofo/jicofo.jar
+RUN cp /app/target/*-jar-with-dependencies.jar /usr/share/jicofo/jicofo.jar
 
 VOLUME /config
 
