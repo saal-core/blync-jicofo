@@ -18,6 +18,7 @@
 package org.jitsi.jicofo.xmpp;
 
 import org.jetbrains.annotations.*;
+import org.jitsi.impl.protocol.xmpp.ConfRoomHostMapper;
 import org.jitsi.osgi.*;
 import org.jitsi.xmpp.extensions.colibri.*;
 import org.jitsi.xmpp.extensions.jitsimeet.*;
@@ -391,13 +392,17 @@ public class FocusComponent
             ConferenceIq query)
         throws Exception
     {
+        logger.info("Query -> "+query.toXML());
+
         ConferenceIq response = new ConferenceIq();
         EntityBareJid room = query.getRoom();
 
+
         logger.info("Focus request for room: " + room);
+        logger.info("Focus request from  " +  query.getFrom());
 
         boolean roomExists = focusManager.getConference(room) != null;
-
+        logger.info(room+ "----room Status--- ----"+roomExists);
         if (focusManager.isShutdownInProgress() && !roomExists)
         {
             // Service unavailable
@@ -406,16 +411,36 @@ public class FocusComponent
         }
 
         // Authentication and reservations system logic
-        org.jivesoftware.smack.packet.IQ error
-            = processExtensions(query, response, roomExists);
+        org.jivesoftware.smack.packet.IQ error = processExtensions(query, response, roomExists);
         if (error != null)
         {
             return error;
         }
 
+
+        String from =query.getFrom().toString();
+        String userAccount =from.split("/")[0];
+
+        if(ConfRoomHostMapper.ROOM_USER_MAP.containsKey(room.toString()) && !ConfRoomHostMapper.isChatRoomPermissionAvailable(room.toString(),userAccount) && !roomExists){
+            response.setType(org.jivesoftware.smack.packet.IQ.Type.result);
+            response.setStanzaId(query.getStanzaId());
+            response.setFrom(query.getTo());
+            response.setTo(query.getFrom());
+            response.setRoom(query.getRoom());
+            response.setReady(false);
+            logger.warn("User "+userAccount+" don't have permission for starting room "+room.toString() );
+            return response;
+        }
+
         boolean ready
-            = focusManager.conferenceRequest(
-                    room, query.getPropertiesMap());
+                = focusManager.conferenceRequest(
+                room, query.getPropertiesMap());
+        logger.info("Ready status for room "+room.toString()+" - > "+ready);
+        if(ready && !roomExists){
+
+            ConfRoomHostMapper.addChatRoom(room.toString(),userAccount);
+            logger.info(ConfRoomHostMapper.ROOM_USER_MAP);
+        }
 
         if (!isFocusAnonymous && authAuthority == null)
         {
@@ -436,23 +461,23 @@ public class FocusComponent
 
         // Authentication module enabled?
         response.addProperty(
-            new ConferenceIq.Property(
-                    "authentication",
-                    String.valueOf(authAuthority != null)));
+                new ConferenceIq.Property(
+                        "authentication",
+                        String.valueOf(authAuthority != null)));
 
         if (authAuthority != null)
         {
             response.addProperty(
-                new ConferenceIq.Property(
-                        "externalAuth",
-                        String.valueOf(authAuthority.isExternal())));
+                    new ConferenceIq.Property(
+                            "externalAuth",
+                            String.valueOf(authAuthority.isExternal())));
         }
 
         if (focusManager.getJitsiMeetServices().getSipGateway() != null
-            || focusManager.getJitsiMeetServices().getJigasiDetector() != null)
+                || focusManager.getJitsiMeetServices().getJigasiDetector() != null)
         {
             response.addProperty(
-                new ConferenceIq.Property("sipGatewayEnabled", "true"));
+                    new ConferenceIq.Property("sipGatewayEnabled", "true"));
         }
 
         return response;
