@@ -13,7 +13,7 @@ public class ConferenceRoomServiceImpl implements ConferenceRoomService {
             = Logger.getLogger(ConferenceRoomServiceImpl.class);
     @Override
     public Boolean updateRoomState(String conferenceId, String status) {
-
+        conferenceId = conferenceId.split("@")[0];
         logger.info("invoking status update api for Room name "+conferenceId);
         String hostUrl = url.replace("{confId}",conferenceId);
         ConferenceStatus conferenceStatus = new ConferenceStatus();
