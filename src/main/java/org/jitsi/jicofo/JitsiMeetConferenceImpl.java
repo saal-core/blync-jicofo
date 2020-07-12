@@ -17,6 +17,8 @@
  */
 package org.jitsi.jicofo;
 
+import ai.saal.blync.service.ConferenceRoomService;
+import ai.saal.blync.service.impl.ConferenceRoomServiceImpl;
 import org.jitsi.jicofo.bridge.*;
 import org.jitsi.osgi.*;
 import org.jitsi.utils.*;
@@ -1301,6 +1303,9 @@ public class JitsiMeetConferenceImpl
             }
             else if (participants.size() == 0)
             {
+                logger.info("participants size() == 0 notify Blync manager  ");
+                ConferenceRoomService conferenceRoomService = new ConferenceRoomServiceImpl();
+                conferenceRoomService.updateRoomState(roomName.toString(),"STOPPED");
                 stop();
             }
         }

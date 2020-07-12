@@ -213,7 +213,7 @@ public class XmppProtocolProvider
         }
 
         ConfigurationService config = FocusBundleActivator.getConfigService();
-        if (config.getBoolean(FocusManager.ALWAYS_TRUST_PNAME,false))
+        if (config.getBoolean(FocusManager.ALWAYS_TRUST_PNAME,true))
         {
             logger.warn("The always_trust config option is enabled. All" +
                         " XMPP server provided certificates are accepted.");
