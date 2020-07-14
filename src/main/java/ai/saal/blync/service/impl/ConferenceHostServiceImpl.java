@@ -1,13 +1,11 @@
 package ai.saal.blync.service.impl;
 
 
-import ai.saal.blync.dto.BlyncUrl;
+import ai.saal.blync.util.BlyncUrl;
 import ai.saal.blync.dto.HostJidReq;
 import ai.saal.blync.dto.ValidationRes;
-import ai.saal.blync.enums.ValidationStatus;
 import ai.saal.blync.service.ConferenceHostService;
 import ai.saal.blync.util.RestClient;
-import org.jitsi.jicofo.xmpp.FocusComponent;
 import org.jitsi.utils.logging.Logger;
 
 public class ConferenceHostServiceImpl implements ConferenceHostService {
@@ -16,7 +14,7 @@ public class ConferenceHostServiceImpl implements ConferenceHostService {
             = Logger.getLogger(ConferenceHostServiceImpl.class);
 
 
-    private static String url = BlyncUrl.URL+"conferences/{confId}/verifyhost";
+    private static String url = BlyncUrl.getUrl()+"conferences/{confId}/verifyhost";
 
 
     @Override
