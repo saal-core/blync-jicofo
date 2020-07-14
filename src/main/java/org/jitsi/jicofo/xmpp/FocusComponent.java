@@ -17,8 +17,11 @@
  */
 package org.jitsi.jicofo.xmpp;
 
+import ai.saal.blync.service.ConferenceHostService;
+import ai.saal.blync.service.ConferenceRoomService;
+import ai.saal.blync.service.impl.ConferenceHostServiceImpl;
+import ai.saal.blync.service.impl.ConferenceRoomServiceImpl;
 import org.jetbrains.annotations.*;
-import org.jitsi.impl.protocol.xmpp.ConfRoomHostMapper;
 import org.jitsi.osgi.*;
 import org.jitsi.xmpp.extensions.colibri.*;
 import org.jitsi.xmpp.extensions.jitsimeet.*;
@@ -420,8 +423,10 @@ public class FocusComponent
 
         String from =query.getFrom().toString();
         String userAccount =from.split("/")[0];
-
-        if(ConfRoomHostMapper.ROOM_USER_MAP.containsKey(room.toString()) && !ConfRoomHostMapper.isChatRoomPermissionAvailable(room.toString(),userAccount) && !roomExists){
+        ConferenceHostService conferenceHostService = new ConferenceHostServiceImpl();
+        Boolean isPermitted = conferenceHostService.validateHostPermission(room.toString(), from);
+        logger.info("Blync manger return => "+isPermitted);
+        if(!isPermitted && !roomExists){
             response.setType(org.jivesoftware.smack.packet.IQ.Type.result);
             response.setStanzaId(query.getStanzaId());
             response.setFrom(query.getTo());
@@ -438,8 +443,9 @@ public class FocusComponent
         logger.info("Ready status for room "+room.toString()+" - > "+ready);
         if(ready && !roomExists){
 
-            ConfRoomHostMapper.addChatRoom(room.toString(),userAccount);
-            logger.info(ConfRoomHostMapper.ROOM_USER_MAP);
+            ConferenceRoomService conferenceRoomService = new ConferenceRoomServiceImpl();
+            conferenceRoomService.updateRoomState(room.toString(),"STARTED");
+
         }
 
         if (!isFocusAnonymous && authAuthority == null)
