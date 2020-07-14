@@ -113,3 +113,28 @@ configured with the jitsi-meet scripts, then you can find the certificate in:
 /var/lib/prosody/$JICOFO_AUTH_DOMAIN.crt 
 ```
 
+## Saal.ai Section
+
+### How to run it
+* Dockerfile
+    * define the env vars (.env file)
+    * build the image
+    ```
+        docker build -t saal-meeting-jicofo .
+    ```
+    * run the container 
+    ```
+        docker run --env-file .env --name saal-meeting-jicofo --network saal_jitsi -v $(pwd)/config/runtime/jicofo:/config saal-meeting-jicofo
+    ```
+
+* DockerCompose
+    * define the env vars (.env file)
+    * build the image
+    ```
+        docker-compose build
+    ```
+    * run the containers 
+    ```
+        docker-compose --env-file .env up -d
+    ``` 
+> Make sure to check the network that you are running on
