@@ -1,0 +1,5 @@
+FROM scr.saal.ai/blync-jicofo-base:0.0.1
+COPY . /blync-jicofo
+WORKDIR /blync-jicofo
+RUN mvn package -Dmaven.test.skip=true
+RUN cp /blync-jicofo/target/*-jar-with-dependencies.jar /blync-jicofo/target/jicofo.jar
