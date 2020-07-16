@@ -115,6 +115,16 @@ configured with the jitsi-meet scripts, then you can find the certificate in:
 
 ## Saal.ai Section
 
+
+#### Jicofo integration properties with Blync-conf-manager
+
+     ```
+        * location => /etc/jitsi/jicofo/blync-manager.properties
+   
+        * conference.manager.url=http://dev-blync.saal.ai:8000/blync-mgmt/internal/api/v1/ [blync manager internal url through kong]
+     
+      ```
+
 ### How to run it
 * Dockerfile
     * define the env vars (.env file)
