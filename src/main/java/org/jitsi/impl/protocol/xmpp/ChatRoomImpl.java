@@ -221,6 +221,7 @@ public class ChatRoomImpl
     public void joinAs(String nickname)
         throws OperationFailedException
     {
+
         try
         {
             this.myResourcepart = Resourcepart.from(nickname);
@@ -424,7 +425,6 @@ public class ChatRoomImpl
                         o.getAffiliation());
             }
         }
-
         return this.role;
     }
 
@@ -1174,8 +1174,10 @@ public class ChatRoomImpl
         synchronized (members)
         {
             chatMember = (ChatMemberImpl) findChatMember(jid);
+
             if (chatMember == null)
             {
+
                 if (presence.getType().equals(Presence.Type.available))
                 {
                     // This is how we detect that a new member has joined. We

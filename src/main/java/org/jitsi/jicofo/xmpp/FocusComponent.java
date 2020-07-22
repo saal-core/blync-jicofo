@@ -423,9 +423,14 @@ public class FocusComponent
 
         String from =query.getFrom().toString();
         String userAccount =from.split("/")[0];
-        ConferenceHostService conferenceHostService = new ConferenceHostServiceImpl();
-        Boolean isPermitted = conferenceHostService.validateHostPermission(room.toString(), from);
-        logger.info("Blync manger return => "+isPermitted);
+        Boolean isPermitted =false;
+        if(!roomExists){
+            ConferenceHostService conferenceHostService = new ConferenceHostServiceImpl();
+            isPermitted = conferenceHostService.validateHostPermission(room.toString(), from);
+            logger.info("Blync manger return => "+isPermitted);
+        }
+
+        logger.info("isPermitted => "+isPermitted);
         if(!isPermitted && !roomExists){
             response.setType(org.jivesoftware.smack.packet.IQ.Type.result);
             response.setStanzaId(query.getStanzaId());

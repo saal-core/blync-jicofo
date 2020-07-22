@@ -691,7 +691,7 @@ public class JitsiMeetConferenceImpl
                 idleTimestamp = -1;
             }
 
-            // Are we ready to start ?
+            //Are we ready to start ?
             if (!checkMinParticipants())
             {
                 return;
@@ -2880,7 +2880,7 @@ public class JitsiMeetConferenceImpl
 
         /**
          * Expires the COLIBRI channels (via
-         * {@link #terminate(AbstractParticipant, boolean)}) for all
+         * {@link # terminate(AbstractParticipant, boolean)}) for all
          * participants.
          * @return the list of participants which were removed from
          * {@link #participants} as a result of this call (does not include
