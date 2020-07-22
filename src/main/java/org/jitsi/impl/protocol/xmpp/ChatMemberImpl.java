@@ -180,6 +180,7 @@ public class ChatMemberImpl
                         o.getRole(), o.getAffiliation());
             }
         }
+
         return this.role;
     }
 

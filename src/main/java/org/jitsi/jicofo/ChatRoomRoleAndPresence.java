@@ -17,6 +17,8 @@
  */
 package org.jitsi.jicofo;
 
+import ai.saal.blync.service.ConferenceHostService;
+import ai.saal.blync.service.impl.ConferenceHostServiceImpl;
 import net.java.sip.communicator.service.protocol.*;
 import net.java.sip.communicator.service.protocol.event.*;
 
@@ -91,6 +93,8 @@ public class ChatRoomRoleAndPresence
      */
     private ChatRoomMember owner;
 
+    ConferenceHostService conferenceHostService = new ConferenceHostServiceImpl();
+
     public ChatRoomRoleAndPresence(JitsiMeetConferenceImpl conference,
                                    ChatRoom chatRoom)
     {
@@ -149,19 +153,24 @@ public class ChatRoomRoleAndPresence
     {
         logger.info("Chat room event " + evt);
 
+        String roomName = evt.getChatRoom().getName();
         XmppChatMember sourceMember = (XmppChatMember)evt.getChatRoomMember();
 
         String eventType = evt.getEventType();
+
         if (ChatRoomMemberPresenceChangeEvent.MEMBER_JOINED.equals(eventType))
         {
+
             if (owner == null)
             {
                 electNewOwner();
             }
             if (authAuthority != null)
-            {
-                checkGrantOwnerToAuthUser(sourceMember);
-            }
+        {
+            checkGrantOwnerToAuthUser(sourceMember,roomName);
+        }
+
+
             conference.onMemberJoined(sourceMember);
         }
         else if (ChatRoomMemberPresenceChangeEvent.MEMBER_LEFT.equals(eventType)
@@ -205,8 +214,6 @@ public class ChatRoomRoleAndPresence
             logger.warn("Focus role unknown");
 
             ChatRoomMemberRole userRole = chatRoom.getUserRole();
-
-            logger.info("Obtained focus role: " + userRole);
 
             if (userRole == null)
                 return;
@@ -350,6 +357,41 @@ public class ChatRoomRoleAndPresence
         }
 
         if (ChatRoomMemberRole.OWNER.compareTo(member.getRole()) < 0)
+        {
+            String authSessionId = authAuthority.getSessionForJid(jabberId);
+            if (authSessionId != null)
+            {
+                grantOwner(jabberId);
+
+                // Notify that this member has been authenticated using
+                // given session
+                EventAdmin eventAdmin = FocusBundleActivator.getEventAdmin();
+
+                if (eventAdmin == null)
+                    return;
+
+                eventAdmin.postEvent(
+                        EventFactory.endpointAuthenticated(
+                                authSessionId,
+                                String.valueOf(conference.getId()),
+                                Participant.getEndpointId(xmppMember)
+                        )
+                );
+            }
+        }
+    }
+
+    private void checkGrantOwnerToAuthUser(ChatRoomMember member,String roomName)
+    {
+        XmppChatMember xmppMember = (XmppChatMember) member;
+        Jid jabberId = xmppMember.getJid();
+        if (jabberId == null)
+        {
+            return;
+        }
+
+        Boolean isPermitted = conferenceHostService.validateHostPermission(roomName,jabberId.toString());
+        if (isPermitted)
         {
             String authSessionId = authAuthority.getSessionForJid(jabberId);
             if (authSessionId != null)
