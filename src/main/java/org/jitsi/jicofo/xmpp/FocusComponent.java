@@ -17,6 +17,10 @@
  */
 package org.jitsi.jicofo.xmpp;
 
+import ai.saal.blync.service.ConferenceHostService;
+import ai.saal.blync.service.ConferenceRoomService;
+import ai.saal.blync.service.impl.ConferenceHostServiceImpl;
+import ai.saal.blync.service.impl.ConferenceRoomServiceImpl;
 import org.jetbrains.annotations.*;
 import org.jitsi.osgi.*;
 import org.jitsi.xmpp.extensions.colibri.*;
@@ -391,13 +395,17 @@ public class FocusComponent
             ConferenceIq query)
         throws Exception
     {
+        logger.info("Query -> "+query.toXML());
+
         ConferenceIq response = new ConferenceIq();
         EntityBareJid room = query.getRoom();
 
+
         logger.info("Focus request for room: " + room);
+        logger.info("Focus request from  " +  query.getFrom());
 
         boolean roomExists = focusManager.getConference(room) != null;
-
+        logger.info(room+ "----room Status--- ----"+roomExists);
         if (focusManager.isShutdownInProgress() && !roomExists)
         {
             // Service unavailable
@@ -406,16 +414,44 @@ public class FocusComponent
         }
 
         // Authentication and reservations system logic
-        org.jivesoftware.smack.packet.IQ error
-            = processExtensions(query, response, roomExists);
+        org.jivesoftware.smack.packet.IQ error = processExtensions(query, response, roomExists);
         if (error != null)
         {
             return error;
         }
 
+
+        String from =query.getFrom().toString();
+        String userAccount =from.split("/")[0];
+        Boolean isPermitted =false;
+        if(!roomExists){
+            ConferenceHostService conferenceHostService = new ConferenceHostServiceImpl();
+            isPermitted = conferenceHostService.validateHostPermission(room.toString(), from);
+            logger.info("Blync manger return => "+isPermitted);
+        }
+
+        logger.info("isPermitted => "+isPermitted);
+        if(!isPermitted && !roomExists){
+            response.setType(org.jivesoftware.smack.packet.IQ.Type.result);
+            response.setStanzaId(query.getStanzaId());
+            response.setFrom(query.getTo());
+            response.setTo(query.getFrom());
+            response.setRoom(query.getRoom());
+            response.setReady(false);
+            logger.warn("User "+userAccount+" don't have permission for starting room "+room.toString() );
+            return response;
+        }
+
         boolean ready
-            = focusManager.conferenceRequest(
-                    room, query.getPropertiesMap());
+                = focusManager.conferenceRequest(
+                room, query.getPropertiesMap());
+        logger.info("Ready status for room "+room.toString()+" - > "+ready);
+        if(ready && !roomExists){
+
+            ConferenceRoomService conferenceRoomService = new ConferenceRoomServiceImpl();
+            conferenceRoomService.updateRoomState(room.toString(),"STARTED");
+
+        }
 
         if (!isFocusAnonymous && authAuthority == null)
         {
@@ -436,23 +472,23 @@ public class FocusComponent
 
         // Authentication module enabled?
         response.addProperty(
-            new ConferenceIq.Property(
-                    "authentication",
-                    String.valueOf(authAuthority != null)));
+                new ConferenceIq.Property(
+                        "authentication",
+                        String.valueOf(authAuthority != null)));
 
         if (authAuthority != null)
         {
             response.addProperty(
-                new ConferenceIq.Property(
-                        "externalAuth",
-                        String.valueOf(authAuthority.isExternal())));
+                    new ConferenceIq.Property(
+                            "externalAuth",
+                            String.valueOf(authAuthority.isExternal())));
         }
 
         if (focusManager.getJitsiMeetServices().getSipGateway() != null
-            || focusManager.getJitsiMeetServices().getJigasiDetector() != null)
+                || focusManager.getJitsiMeetServices().getJigasiDetector() != null)
         {
             response.addProperty(
-                new ConferenceIq.Property("sipGatewayEnabled", "true"));
+                    new ConferenceIq.Property("sipGatewayEnabled", "true"));
         }
 
         return response;

@@ -62,12 +62,13 @@ public class XmppTest
     {
         EntityBareJid roomName = JidCreate.entityBareFrom(
                 "testRoom@example.com");
-
+        EntityBareJid from = JidCreate.entityBareFrom(
+                "g8rhpgypyh9jxf96@guest.vmeet.saal.ai/fBiCai6s");
         FocusComponent focusComponent
             = MockMainMethodActivator.getFocusComponent();
 
         ConferenceIq conferenceIq = new ConferenceIq();
-
+        conferenceIq.setFrom(from);
         conferenceIq.setRoom(roomName);
 
         IQ result
