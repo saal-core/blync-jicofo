@@ -20,7 +20,7 @@ public class RestClient {
     }
 
     public static Response updateConferenceState(String url, Object payload){
-
+        System.out.println(url);
         Client client = ClientBuilder.newClient();
         return client.target(url)
                 .request(MediaType.APPLICATION_JSON)

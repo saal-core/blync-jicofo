@@ -17,6 +17,7 @@
  */
 package org.jitsi.jicofo;
 
+import ai.saal.blync.util.BlyncUrl;
 import org.jitsi.cmd.*;
 import org.jitsi.jicofo.osgi.*;
 import org.jitsi.jicofo.xmpp.*;
@@ -171,7 +172,8 @@ public class Main
         {
             componentDomain = host;
         }
-
+        String blyncUrl =  cmdLine.getOptionValue("CONFERENCE_MANAGER_URL");
+        BlyncUrl.setUrl(blyncUrl);
         // Jicofo XMPP component
         String componentSubDomain
             = cmdLine.getOptionValue(
