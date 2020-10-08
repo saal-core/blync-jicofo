@@ -1300,6 +1300,7 @@ public class JitsiMeetConferenceImpl
             if (participants.size() == 1)
             {
                 rescheduleSingleParticipantTimeout();
+                stop();
             }
             else if (participants.size() == 0)
             {
