@@ -277,6 +277,14 @@ public class JitsiMeetConferenceImpl
      */
     private final boolean includeInStatistics;
 
+
+    /**
+     * this is used to communicate with conference manager
+     */
+    ConferenceRoomService conferenceRoomService = new ConferenceRoomServiceImpl();
+
+
+
     /**
      * Creates new instance of {@link JitsiMeetConferenceImpl}.
      *
@@ -1300,12 +1308,14 @@ public class JitsiMeetConferenceImpl
             if (participants.size() == 1)
             {
                 rescheduleSingleParticipantTimeout();
-                stop();
+                Boolean isDirectCall = conferenceRoomService.isDirectCall(roomName.toString());
+                if(isDirectCall)
+                    stop();
             }
             else if (participants.size() == 0)
             {
                 logger.info("participants size() == 0 notify Blync manager  ");
-                ConferenceRoomService conferenceRoomService = new ConferenceRoomServiceImpl();
+
                 conferenceRoomService.updateRoomState(roomName.toString(),"STOPPED");
                 stop();
             }
