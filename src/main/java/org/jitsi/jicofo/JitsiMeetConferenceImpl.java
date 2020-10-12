@@ -1309,8 +1309,11 @@ public class JitsiMeetConferenceImpl
             {
                 rescheduleSingleParticipantTimeout();
                 Boolean isDirectCall = conferenceRoomService.isDirectCall(roomName.toString());
-                if(isDirectCall)
+                if(isDirectCall){
+                    conferenceRoomService.updateRoomState(roomName.toString(),"STOPPED");
                     stop();
+                }
+
             }
             else if (participants.size() == 0)
             {
