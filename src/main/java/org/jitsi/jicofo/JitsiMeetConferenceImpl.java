@@ -691,7 +691,7 @@ public class JitsiMeetConferenceImpl
         {
             logger.info(
                     "Member "
-                        + chatRoomMember.getContactAddress() + " joined.");
+                            + chatRoomMember.getContactAddress() + " joined. count = "+participants.size() );
             getFocusManager().getStatistics().totalParticipants.incrementAndGet();
 
             if (!isFocusMember(chatRoomMember))
@@ -702,6 +702,16 @@ public class JitsiMeetConferenceImpl
             //Are we ready to start ?
             if (!checkMinParticipants())
             {
+
+                Boolean isDirectCall = conferenceRoomService.isDirectCall(roomName.toString());
+                logger.info("First participant join event Checking DIRECT CALL = "+isDirectCall);
+                if(isDirectCall) {
+
+                    DirectCallSinglePersonTimeout directCallSinglePersonTimeout = new DirectCallSinglePersonTimeout();
+                    Thread directCallSinglePersonTimeoutThread = new Thread(directCallSinglePersonTimeout);
+                    directCallSinglePersonTimeoutThread.start();
+                }
+                logger.info("returning meeting "+participants.size());
                 return;
             }
 
@@ -711,10 +721,6 @@ public class JitsiMeetConferenceImpl
             // Invite all not invited yet
             if (participants.size() == 0)
             {
-
-                DirectCallSinglePersonTimeout directCallSinglePersonTimeout = new DirectCallSinglePersonTimeout();
-                Thread directCallSinglePersonTimeoutThread = new Thread(directCallSinglePersonTimeout);
-                directCallSinglePersonTimeoutThread.start();
 
                 for (final ChatRoomMember member : chatRoom.getMembers())
                 {
@@ -2726,10 +2732,16 @@ public class JitsiMeetConferenceImpl
         @Override
         public void run() {
             try {
+                logger.info("Starting time out Thread for  roomName : "+roomName);
+                Thread.sleep(25000);
 
-                Thread.sleep(20000);
-                if(participants.size()== 1){
+                if(participants.size()== 0){
+                    logger.info("DirectCall SinglePerson Timeout Stopping  meeting .Room name   = "+roomName
+                            +" participants count "+participants.size());
                     stop();
+                }else{
+                    logger.info("DirectCall SinglePerson Timeout failed meeting Second Person joined. Room name   = "+roomName
+                            +" participants count "+participants.size());
                 }
             } catch (InterruptedException e) {
                 logger.error(
