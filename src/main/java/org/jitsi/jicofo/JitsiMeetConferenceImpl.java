@@ -711,6 +711,11 @@ public class JitsiMeetConferenceImpl
             // Invite all not invited yet
             if (participants.size() == 0)
             {
+
+                DirectCallSinglePersonTimeout directCallSinglePersonTimeout = new DirectCallSinglePersonTimeout();
+                Thread directCallSinglePersonTimeoutThread = new Thread(directCallSinglePersonTimeout);
+                directCallSinglePersonTimeoutThread.start();
+
                 for (final ChatRoomMember member : chatRoom.getMembers())
                 {
                     inviteChatMember(
@@ -2716,6 +2721,22 @@ public class JitsiMeetConferenceImpl
         }
     }
 
+    private class DirectCallSinglePersonTimeout implements Runnable{
+
+        @Override
+        public void run() {
+            try {
+
+                Thread.sleep(20000);
+                if(participants.size()== 1){
+                    stop();
+                }
+            } catch (InterruptedException e) {
+                logger.error(
+                        "DirectCallSinglePersonTimeout sleep error " + getRoomName());
+            }
+        }
+    }
     /**
      * The task is scheduled with some delay when we end up with single
      * <tt>Participant</tt> in the room to terminate its media session. There
