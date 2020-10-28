@@ -1,5 +1,6 @@
 package ai.saal.blync.util;
 
+import ai.saal.blync.dto.ConferenceRes;
 import ai.saal.blync.dto.ValidationRes;
 
 import javax.ws.rs.client.Client;
@@ -25,5 +26,14 @@ public class RestClient {
         return client.target(url)
                 .request(MediaType.APPLICATION_JSON)
                 .put(Entity.entity(payload, MediaType.APPLICATION_JSON));
+    }
+
+
+    public static ConferenceRes getConferenceDetails(String url){
+        Client client = ClientBuilder.newClient();
+        return client
+                .target(url)
+                .request(MediaType.APPLICATION_JSON)
+                .get(ConferenceRes.class);
     }
 }

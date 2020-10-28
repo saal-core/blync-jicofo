@@ -277,6 +277,14 @@ public class JitsiMeetConferenceImpl
      */
     private final boolean includeInStatistics;
 
+
+    /**
+     * this is used to communicate with conference manager
+     */
+    ConferenceRoomService conferenceRoomService = new ConferenceRoomServiceImpl();
+
+
+
     /**
      * Creates new instance of {@link JitsiMeetConferenceImpl}.
      *
@@ -683,7 +691,7 @@ public class JitsiMeetConferenceImpl
         {
             logger.info(
                     "Member "
-                        + chatRoomMember.getContactAddress() + " joined.");
+                            + chatRoomMember.getContactAddress() + " joined. count = "+participants.size() );
             getFocusManager().getStatistics().totalParticipants.incrementAndGet();
 
             if (!isFocusMember(chatRoomMember))
@@ -694,6 +702,16 @@ public class JitsiMeetConferenceImpl
             //Are we ready to start ?
             if (!checkMinParticipants())
             {
+
+                Boolean isDirectCall = conferenceRoomService.isDirectCall(roomName.toString());
+                logger.info("First participant join event Checking DIRECT CALL = "+isDirectCall);
+                if(isDirectCall) {
+
+                    DirectCallSinglePersonTimeout directCallSinglePersonTimeout = new DirectCallSinglePersonTimeout();
+                    Thread directCallSinglePersonTimeoutThread = new Thread(directCallSinglePersonTimeout);
+                    directCallSinglePersonTimeoutThread.start();
+                }
+                logger.info("returning meeting "+participants.size());
                 return;
             }
 
@@ -703,6 +721,7 @@ public class JitsiMeetConferenceImpl
             // Invite all not invited yet
             if (participants.size() == 0)
             {
+
                 for (final ChatRoomMember member : chatRoom.getMembers())
                 {
                     inviteChatMember(
@@ -1300,11 +1319,19 @@ public class JitsiMeetConferenceImpl
             if (participants.size() == 1)
             {
                 rescheduleSingleParticipantTimeout();
+                Boolean isDirectCall = conferenceRoomService.isDirectCall(roomName.toString());
+                if(isDirectCall){
+                    logger.info("updating room status to Stopped room ID  = "+roomName.toString());
+                    conferenceRoomService.updateRoomState(roomName.toString(),"STOPPED");
+                    logger.info("Terminating conference id = "+roomName.toString());
+                    stop();
+                }
+
             }
             else if (participants.size() == 0)
             {
                 logger.info("participants size() == 0 notify Blync manager  ");
-                ConferenceRoomService conferenceRoomService = new ConferenceRoomServiceImpl();
+
                 conferenceRoomService.updateRoomState(roomName.toString(),"STOPPED");
                 stop();
             }
@@ -2700,6 +2727,28 @@ public class JitsiMeetConferenceImpl
         }
     }
 
+    private class DirectCallSinglePersonTimeout implements Runnable{
+
+        @Override
+        public void run() {
+            try {
+                logger.info("Starting time out Thread for  roomName : "+roomName);
+                Thread.sleep(25000);
+
+                if(participants.size()== 0){
+                    logger.info("DirectCall SinglePerson Timeout Stopping  meeting .Room name   = "+roomName
+                            +" participants count "+participants.size());
+                    stop();
+                }else{
+                    logger.info("DirectCall SinglePerson Timeout failed meeting Second Person joined. Room name   = "+roomName
+                            +" participants count "+participants.size());
+                }
+            } catch (InterruptedException e) {
+                logger.error(
+                        "DirectCallSinglePersonTimeout sleep error " + getRoomName());
+            }
+        }
+    }
     /**
      * The task is scheduled with some delay when we end up with single
      * <tt>Participant</tt> in the room to terminate its media session. There
