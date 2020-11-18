@@ -22,7 +22,7 @@ import org.jitsi.jicofo.osgi.*;
 import org.jitsi.jicofo.xmpp.*;
 import org.jitsi.meet.*;
 import org.jitsi.utils.logging.*;
-
+import ai.saal.blync.util.BlyncUrl;
 import static org.apache.commons.lang3.StringUtils.*;
 
 /**
@@ -171,6 +171,11 @@ public class Main
         {
             componentDomain = host;
         }
+        System.out.println("## CONFERENCE_MANAGER_URL => "+ cmdLine.getOptionValue("CONFERENCE_MANAGER_URL"));
+        String blyncUrl =  cmdLine.getOptionValue("CONFERENCE_MANAGER_URL");
+
+
+        BlyncUrl.setUrl(blyncUrl);
 
         // Jicofo XMPP component
         String componentSubDomain
