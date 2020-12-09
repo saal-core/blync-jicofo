@@ -181,7 +181,7 @@ public class ChatRoomRoleAndPresence
             {
                 logger.info("Owner has left the room !");
                 owner = null;
-                electNewOwner();
+//                electNewOwner();
             }
             if (ChatRoomMemberPresenceChangeEvent
                         .MEMBER_KICKED.equals(eventType))
