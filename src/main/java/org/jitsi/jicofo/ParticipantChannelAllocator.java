@@ -18,16 +18,15 @@
 package org.jitsi.jicofo;
 
 import net.java.sip.communicator.service.protocol.*;
+import org.jitsi.jicofo.codec.*;
 import org.jitsi.protocol.xmpp.colibri.exception.*;
 import org.jitsi.xmpp.extensions.colibri.*;
 import org.jitsi.xmpp.extensions.jingle.*;
 import org.jitsi.xmpp.extensions.jingle.JingleUtils;
 import org.jitsi.xmpp.extensions.jitsimeet.*;
 import org.jitsi.jicofo.discovery.*;
-import org.jitsi.jicofo.util.*;
 import org.jitsi.protocol.xmpp.*;
 import org.jitsi.protocol.xmpp.util.*;
-import org.jitsi.utils.*;
 import org.jitsi.utils.logging.*;
 import org.jxmpp.jid.*;
 
@@ -88,47 +87,17 @@ public class ParticipantChannelAllocator extends AbstractChannelAllocator
         EntityFullJid address = participant.getMucJid();
 
         // Feature discovery
-        List<String> features = DiscoveryUtil.discoverParticipantFeatures(
-            meetConference.getXmppProvider(), address);
+        List<String> features = DiscoveryUtil.discoverParticipantFeatures(meetConference.getXmppProvider(), address);
         participant.setSupportedFeatures(features);
-
-        List<ContentPacketExtension> contents = new ArrayList<>();
 
         JitsiMeetConfig config = meetConference.getConfig();
 
-        boolean useIce = participant.hasIceSupport();
-        boolean useDtls = participant.hasDtlsSupport();
-        // TODO We have a single `config` for the conference, but the rtx flag
-        // is per participant. Perhaps we should have each participant have its
-        // own config.
-        boolean useRtx
-            = config.isRtxEnabled() && participant.hasRtxSupport();
+        OfferOptions offerOptions = new OfferOptions();
+        OfferOptionsKt.applyConstraints(offerOptions, config);
+        OfferOptionsKt.applyConstraints(offerOptions, participant);
 
-        JingleOfferFactory jingleOfferFactory
-            = FocusBundleActivator.getJingleOfferFactory();
-
-        if (participant.hasAudioSupport())
-        {
-            contents.add(
-                jingleOfferFactory.createAudioContent(useIce, useDtls, config));
-        }
-
-        if (participant.hasVideoSupport())
-        {
-            contents.add(
-                jingleOfferFactory.createVideoContent(
-                    useIce, useDtls, useRtx, config));
-        }
-
-        // Is SCTP enabled ?
-        boolean openSctp = config.openSctp() == null || config.openSctp();
-        if (openSctp && participant.hasSctpSupport())
-        {
-            contents.add(
-                jingleOfferFactory.createDataContent(useIce, useDtls));
-        }
-
-        return contents;
+        JingleOfferFactory jingleOfferFactory = FocusBundleActivator.getJingleOfferFactory();
+        return jingleOfferFactory.createOffer(offerOptions);
     }
 
     /**

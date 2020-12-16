@@ -21,10 +21,10 @@ import mock.*;
 import mock.jvb.*;
 import mock.util.*;
 
+import org.jitsi.jicofo.codec.*;
 import org.jitsi.xmpp.extensions.colibri.*;
 import org.jitsi.xmpp.extensions.jingle.*;
 
-import org.jitsi.jicofo.util.*;
 import org.jitsi.protocol.xmpp.colibri.*;
 
 import org.junit.*;
@@ -85,23 +85,15 @@ public class ColibriTest
         ColibriConference colibriConf = colibriTool.createNewConference();
 
         colibriConf.setConfig(config);
+        colibriConf.setName(JidCreate.entityBareFrom("foo@bar.com/zzz"));
 
         colibriConf.setJitsiVideobridge(mockBridge.getBridgeJid());
 
-        List<ContentPacketExtension> contents = new ArrayList<>();
+        OfferOptions offerOptions = new OfferOptions();
+        OfferOptionsKt.applyConstraints(offerOptions, config);
+        offerOptions.setRtx(false);
 
-        JingleOfferFactory jingleOfferFactory
-            = FocusBundleActivator.getJingleOfferFactory();
-        ContentPacketExtension audio
-            = jingleOfferFactory.createAudioContent(true, true, config);
-        ContentPacketExtension video
-            = jingleOfferFactory.createVideoContent(true, true, false, config);
-        ContentPacketExtension data
-            = jingleOfferFactory.createDataContent(true, true);
-
-        contents.add(audio);
-        contents.add(video);
-        contents.add(data);
+        List<ContentPacketExtension> contents = FocusBundleActivator.getJingleOfferFactory().createOffer(offerOptions);
 
         String peer1 = "endpoint1";
         String peer2 = "endpoint2";

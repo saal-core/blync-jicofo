@@ -17,11 +17,10 @@
  */
 package org.jitsi.jicofo;
 
+import org.jitsi.jicofo.codec.*;
 import org.jitsi.protocol.xmpp.colibri.exception.*;
 import org.jitsi.xmpp.extensions.colibri.*;
 import org.jitsi.xmpp.extensions.jingle.*;
-import net.java.sip.communicator.service.protocol.*;
-import org.jitsi.jicofo.util.*;
 import org.jitsi.utils.logging.*;
 
 import java.util.*;
@@ -77,24 +76,11 @@ public class OctoChannelAllocator extends AbstractChannelAllocator
     @Override
     protected List<ContentPacketExtension> createOffer()
     {
-        JitsiMeetConfig config = meetConference.getConfig();
+        OfferOptions options = OfferOptionsKt.getOctoOptions();
+        OfferOptionsKt.applyConstraints(options, meetConference.getConfig());
 
-        boolean useIce = false;
-        boolean useDtls = false;
-        boolean useRtx = false;
-
-        JingleOfferFactory jingleOfferFactory
-            = FocusBundleActivator.getJingleOfferFactory();
-
-        List<ContentPacketExtension> contents = new ArrayList<>();
-        contents.add(
-            jingleOfferFactory.createAudioContent(useIce, useDtls, config));
-
-        contents.add(
-            jingleOfferFactory.createVideoContent(
-                    useIce, useDtls, useRtx, config));
-
-        return contents;
+        JingleOfferFactory jingleOfferFactory = FocusBundleActivator.getJingleOfferFactory();
+        return jingleOfferFactory.createOffer(options);
     }
 
     /**

@@ -80,6 +80,11 @@ public class JitsiMeetConfig
     public static final String PNAME_ENABLE_TCC = "enableTcc";
 
     /**
+     * Whether RED should be enabled for opus.
+     */
+    public static final String PNAME_ENABLE_OPUS_RED = "enableOpusRed";
+
+    /**
      * The name of the property that specifies JID of the bridge which should be
      * used instead of any bridges elected by <tt>BridgeSelector</tt>.
      * The property is meant to be used in a test that aims to run a conference
@@ -269,6 +274,12 @@ public class JitsiMeetConfig
         return enableTcc == null ? DEFAULT_ENABLE_TCC : enableTcc;
     }
 
+    public boolean isOpusRedEnabled()
+    {
+        Boolean enableOpusRed = getBoolean(PNAME_ENABLE_OPUS_RED);
+        return enableOpusRed != null && enableOpusRed;
+    }
+
     /**
      * Gets the minimum number of participants that need to be present in the
      * call before we start it.
@@ -284,9 +295,10 @@ public class JitsiMeetConfig
      * Returns the value of the open sctp configuration property or
      * <tt>null</tt> if it has not been specified.
      */
-    public Boolean openSctp()
+    public boolean openSctp()
     {
-        return getBoolean(PNAME_OPEN_SCTP);
+        Boolean openSctp = getBoolean(PNAME_OPEN_SCTP);
+        return openSctp == null || openSctp;
     }
 
     private Boolean getBoolean(String name)

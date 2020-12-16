@@ -22,11 +22,11 @@ import mock.jvb.*;
 import mock.xmpp.*;
 import mock.xmpp.colibri.*;
 
+import org.jitsi.jicofo.codec.*;
 import org.jitsi.protocol.xmpp.colibri.exception.*;
 import org.jitsi.xmpp.extensions.colibri.*;
 import org.jitsi.xmpp.extensions.jingle.*;
 
-import org.jitsi.jicofo.util.*;
 import org.jitsi.protocol.xmpp.colibri.*;
 
 import org.jivesoftware.smack.packet.*;
@@ -118,6 +118,7 @@ public class ColibriThreadingTest
             = colibriOpSet.createAllocThreadingConf();
 
         colibriConf.setJitsiVideobridge(mockBridgeJid);
+        colibriConf.setName(JidCreate.entityBareFrom("foo@bar.com/zzz"));
 
         colibriConf.blockConferenceCreator(true);
         colibriConf.blockResponseReceive(true);
@@ -311,19 +312,11 @@ public class ColibriThreadingTest
 
     static List<ContentPacketExtension> createContents()
     {
-        List<ContentPacketExtension> contents
-            = new ArrayList<>();
+        OfferOptions offerOptions = new OfferOptions();
+        OfferOptionsKt.applyConstraints(offerOptions, config);
+        offerOptions.setRtx(false);
 
-        JingleOfferFactory jingleOfferFactory
-            = FocusBundleActivator.getJingleOfferFactory();
-
-        contents.add(jingleOfferFactory.createAudioContent(true, true, config));
-
-        contents.add(jingleOfferFactory.createVideoContent(true, true, false, config));
-
-        contents.add(jingleOfferFactory.createDataContent(true, true));
-
-        return contents;
+        return FocusBundleActivator.getJingleOfferFactory().createOffer(offerOptions);
     }
 
     class MockPeerAllocator
