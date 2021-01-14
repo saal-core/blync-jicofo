@@ -163,7 +163,8 @@ public class ChatRoomRoleAndPresence
 
             if (owner == null)
             {
-                electNewOwner();
+                logger.info("Owner == null and new member member joined  ");
+//                electNewOwner();
             }
             if (authAuthority != null)
         {
