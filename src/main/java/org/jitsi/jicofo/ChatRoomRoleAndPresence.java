@@ -163,7 +163,8 @@ public class ChatRoomRoleAndPresence
 
             if (owner == null)
             {
-                electNewOwner();
+
+                    electNewOwner();
             }
             if (authAuthority != null)
         {
@@ -181,7 +182,7 @@ public class ChatRoomRoleAndPresence
             {
                 logger.info("Owner has left the room !");
                 owner = null;
-//                electNewOwner();
+                electNewOwner();
             }
             if (ChatRoomMemberPresenceChangeEvent
                         .MEMBER_KICKED.equals(eventType))
@@ -233,33 +234,40 @@ public class ChatRoomRoleAndPresence
 
         for (ChatRoomMember member : chatRoom.getMembers())
         {
-            if (conference.isFocusMember((XmppChatMember) member)
-                || ((XmppChatMember) member).isRobot()
-                // FIXME make Jigasi advertise itself as a robot
-                || conference.isSipGateway(member))
-            {
-                continue;
-            }
-            else if (ChatRoomMemberRole.OWNER.compareTo(member.getRole()) >=0)
-            {
-                // Select existing owner
-                owner = member;
-                logger.info(
-                    "Owner already in the room: " + member.getName());
-                break;
-            }
-            else
-            {
-                // Elect new owner
-                if (grantOwner(((XmppChatMember)member).getJid()))
+            logger.info("Confence owner is null");
+            XmppChatMember xmppMember = (XmppChatMember) member;
+            Jid jabberId = xmppMember.getJid();
+            Boolean isPermitted = conferenceHostService.validateHostPermission(chatRoom.getName(),jabberId.toString());
+            if(isPermitted){
+                if (conference.isFocusMember((XmppChatMember) member)
+                        || ((XmppChatMember) member).isRobot()
+                        // FIXME make Jigasi advertise itself as a robot
+                        || conference.isSipGateway(member))
                 {
-                    logger.info(
-                        "Granted owner to " + member.getContactAddress());
-
-                    owner = member;
+                    continue;
                 }
-                break;
+                else if (ChatRoomMemberRole.OWNER.compareTo(member.getRole()) >=0)
+                {
+                    // Select existing owner
+                    owner = member;
+                    logger.info(
+                            "Owner already in the room: " + member.getName());
+                    break;
+                }
+                else
+                {
+                    // Elect new owner
+                    if (grantOwner(((XmppChatMember)member).getJid()))
+                    {
+                        logger.info(
+                                "Granted owner to " + member.getContactAddress());
+
+                        owner = member;
+                    }
+                    break;
+                }
             }
+
         }
     }
 
