@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,13 +17,15 @@
  */
 package org.jitsi.jicofo;
 
+import org.jitsi.impl.protocol.xmpp.*;
 import org.jitsi.protocol.xmpp.colibri.exception.*;
 import org.jitsi.xmpp.extensions.colibri.*;
 import org.jitsi.xmpp.extensions.jingle.*;
-import net.java.sip.communicator.service.protocol.*;
-import org.jitsi.utils.logging.*;
+import org.jitsi.utils.logging2.*;
+import org.jivesoftware.smack.*;
 import org.jxmpp.jid.*;
 
+import javax.validation.constraints.*;
 import java.util.*;
 
 import static org.apache.commons.lang3.StringUtils.*;
@@ -37,25 +39,6 @@ import static org.apache.commons.lang3.StringUtils.*;
  */
 public abstract class AbstractChannelAllocator implements Runnable
 {
-    /**
-     * Error code used in {@link OperationFailedException} when Colibri channel
-     * allocation fails.
-     * FIXME: consider moving to OperationFailedException ?
-     */
-    final static int CHANNEL_ALLOCATION_FAILED_ERR_CODE = 21;
-
-    /**
-     * The class logger which can be used to override logging level inherited
-     * from {@link JitsiMeetConference}.
-     */
-    private final static Logger classLogger
-        = Logger.getLogger(AbstractChannelAllocator.class);
-
-    /**
-     * The logger for this instance. Uses the logging level either of the
-     * {@link #classLogger} or {@link JitsiMeetConference#getLogger()}
-     * whichever is higher.
-     */
     private final Logger logger;
 
     /**
@@ -109,12 +92,12 @@ public abstract class AbstractChannelAllocator implements Runnable
      * invite a specific {@link Participant} into a specific
      * {@link JitsiMeetConferenceImpl} (using a specific jitsi-videobridge
      * instance specified by a
-     * {@link org.jitsi.jicofo.JitsiMeetConferenceImpl.BridgeSession}).
+     * {@link JitsiMeetConferenceImpl.BridgeSession}).
      *
      * @param meetConference the {@link JitsiMeetConferenceImpl} into which to
      * invite {@code participant}.
      * @param bridgeSession the
-     * {@link org.jitsi.jicofo.JitsiMeetConferenceImpl.BridgeSession} which
+     * {@link JitsiMeetConferenceImpl.BridgeSession} which
      * identifies the jitsi-videobridge instance on which to allocate channels.
      * @param participant the participant to be invited.
      * @param startMuted an array which must have the size of 2 where the first
@@ -125,18 +108,18 @@ public abstract class AbstractChannelAllocator implements Runnable
      */
     protected AbstractChannelAllocator(
             JitsiMeetConferenceImpl meetConference,
-            JitsiMeetConferenceImpl.BridgeSession bridgeSession,
-            AbstractParticipant participant,
+            @NotNull JitsiMeetConferenceImpl.BridgeSession bridgeSession,
+            @NotNull AbstractParticipant participant,
             boolean[] startMuted,
-            boolean reInvite)
+            boolean reInvite,
+            Logger parentLogger)
     {
         this.meetConference = meetConference;
-        this.bridgeSession
-            = Objects.requireNonNull(bridgeSession, "bridgeSession");
-        this.participant = Objects.requireNonNull(participant, "participant");
+        this.bridgeSession = bridgeSession;
+        this.participant = participant;
         this.startMuted = startMuted;
         this.reInvite = reInvite;
-        this.logger = Logger.getLogger(classLogger, meetConference.getLogger());
+        this.logger = parentLogger.createChildLogger(getClass().getName());
     }
 
     /**
@@ -169,7 +152,6 @@ public abstract class AbstractChannelAllocator implements Runnable
     }
 
     private void doRun()
-        throws OperationFailedException
     {
         List<ContentPacketExtension> offer;
 
@@ -217,7 +199,7 @@ public abstract class AbstractChannelAllocator implements Runnable
         {
             invite(offer);
         }
-        catch (OperationFailedException e)
+        catch (SmackException.NotConnectedException e)
         {
             logger.error("Failed to invite participant: ", e);
         }
@@ -229,7 +211,7 @@ public abstract class AbstractChannelAllocator implements Runnable
      * (or re-invite) him to the conference.
      */
     protected void invite(List<ContentPacketExtension> offer)
-        throws OperationFailedException
+        throws SmackException.NotConnectedException
     {
     }
 
@@ -282,8 +264,7 @@ public abstract class AbstractChannelAllocator implements Runnable
 
             if (bridgeSession.colibriConference.hasJustAllocated())
             {
-                meetConference.onColibriConferenceAllocated(
-                    bridgeSession.colibriConference, jvb);
+                meetConference.onColibriConferenceAllocated();
             }
             return colibriChannels;
         }
@@ -372,36 +353,11 @@ public abstract class AbstractChannelAllocator implements Runnable
     }
 
     /**
-     * @return the {@link JitsiMeetConferenceImpl.BridgeSession}
-     * instance of this {@link AbstractChannelAllocator}.
-     */
-    public JitsiMeetConferenceImpl.BridgeSession getBridgeSession()
-    {
-        return bridgeSession;
-    }
-
-    /**
      * @return the {@link Participant} of this {@link AbstractChannelAllocator}.
      */
     public AbstractParticipant getParticipant()
     {
         return participant;
-    }
-
-    /**
-     * @return the "startMuted" array of this {@link AbstractChannelAllocator}.
-     */
-    public boolean[] getStartMuted()
-    {
-        return startMuted;
-    }
-
-    /**
-     * @return the {@code reInvite} flag of this {@link AbstractChannelAllocator}.
-     */
-    public boolean isReInvite()
-    {
-        return reInvite;
     }
 
     @Override

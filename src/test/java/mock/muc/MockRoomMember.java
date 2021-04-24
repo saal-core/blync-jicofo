@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,73 +17,31 @@
  */
 package mock.muc;
 
-import mock.xmpp.*;
-
-import net.java.sip.communicator.service.protocol.*;
-import net.java.sip.communicator.service.protocol.globalstatus.*;
-
-import org.jitsi.jicofo.discovery.*;
-import org.jitsi.protocol.xmpp.*;
+import org.jitsi.impl.protocol.xmpp.*;
+import org.jitsi.jicofo.xmpp.muc.*;
 import org.jivesoftware.smack.packet.*;
 import org.jxmpp.jid.*;
 import org.jxmpp.jid.parts.*;
-
-import java.util.*;
 
 /**
  * @author Pawel Domas
  */
 public class MockRoomMember
-    implements XmppChatMember
+    implements ChatRoomMember
 {
     private final Resourcepart name;
 
     private final EntityFullJid address;
 
-    private final MockMultiUserChat room;
+    private final MockChatRoom room;
 
-    private ChatRoomMemberRole role = ChatRoomMemberRole.MEMBER;
+    private MemberRole role = MemberRole.GUEST;
 
-    MockRoomMember(EntityFullJid address, MockMultiUserChat chatRoom)
+    public MockRoomMember(EntityFullJid address, MockChatRoom chatRoom)
     {
         this.address = address;
         this.name = address.getResourceOrThrow();
         this.room = chatRoom;
-    }
-
-    public void setupFeatures()
-    {
-        OperationSetSimpleCaps caps
-                = room.getParentProvider()
-                .getOperationSet(OperationSetSimpleCaps.class);
-
-        MockSetSimpleCapsOpSet mockCaps = (MockSetSimpleCapsOpSet) caps;
-
-        List<String> features = DiscoveryUtil.getDefaultParticipantFeatureSet();
-
-        MockCapsNode myNode
-            = new MockCapsNode(
-                address, features.toArray(new String[features.size()]));
-
-        mockCaps.addChildNode(myNode);
-    }
-
-    @Override
-    public ChatRoom getChatRoom()
-    {
-        return room;
-    }
-
-    @Override
-    public ProtocolProviderService getProtocolProvider()
-    {
-        return room.getParentProvider();
-    }
-
-    @Override
-    public String getContactAddress()
-    {
-        return address.toString();
     }
 
     @Override
@@ -99,19 +57,7 @@ public class MockRoomMember
     }
 
     @Override
-    public byte[] getAvatar()
-    {
-        return new byte[0];
-    }
-
-    @Override
-    public Contact getContact()
-    {
-        return null;
-    }
-
-    @Override
-    public ChatRoomMemberRole getRole()
+    public MemberRole getRole()
     {
         return role;
     }
@@ -122,21 +68,9 @@ public class MockRoomMember
     }
 
     @Override
-    public void setRole(ChatRoomMemberRole role)
+    public void setRole(MemberRole role)
     {
         this.role = role;
-    }
-
-    @Override
-    public PresenceStatus getPresenceStatus()
-    {
-        return GlobalStatusEnum.ONLINE;
-    }
-
-    @Override
-    public String getDisplayName()
-    {
-        return null;
     }
 
     @Override
@@ -156,13 +90,6 @@ public class MockRoomMember
     {
         //FIXME: implement in order to test start muted feature
         return 0;
-    }
-
-    @Override
-    public Boolean hasVideoMuted()
-    {
-        // FIXME: not implemented
-        return null;
     }
 
     @Override

@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 package mock.xmpp;
 
 import org.jitsi.xmpp.extensions.jingle.*;
-import org.jitsi.protocol.xmpp.*;
+import org.jivesoftware.smack.*;
 import org.jivesoftware.smack.iqrequest.*;
 import org.jivesoftware.smack.packet.*;
 import org.jxmpp.jid.*;
@@ -30,7 +30,7 @@ import java.util.*;
 public class XmppPeer
     implements IQRequestHandler
 {
-    private final XmppConnection connection;
+    private final AbstractXMPPConnection connection;
 
     private final List<IQ> iqs = new ArrayList<>();
 
@@ -51,12 +51,12 @@ public class XmppPeer
         }
     }
 
-    public XmppPeer(Jid jid, XmppConnection connection)
+    public XmppPeer(Jid jid, AbstractXMPPConnection connection)
     {
         this.connection = connection;
     }
 
-    public XmppConnection getConnection()
+    public AbstractXMPPConnection getConnection()
     {
         return connection;
     }

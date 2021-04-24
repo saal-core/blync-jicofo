@@ -1,6 +1,6 @@
 package org.jitsi.jicofo.bridge;
 
-import org.jitsi.utils.logging.*;
+import org.jitsi.utils.logging2.*;
 import org.json.simple.*;
 
 import java.util.*;
@@ -8,17 +8,17 @@ import java.util.function.*;
 import java.util.stream.*;
 
 import static org.glassfish.jersey.internal.guava.Predicates.not;
+import static org.jitsi.jicofo.bridge.BridgeConfig.config;
 
 /**
  * Represents an algorithm for bridge selection.
  */
-abstract class BridgeSelectionStrategy
+public abstract class BridgeSelectionStrategy
 {
     /**
      * The logger.
      */
-    private final static Logger logger
-            = Logger.getLogger(BridgeSelectionStrategy.class);
+    private final static Logger logger = new LoggerImpl(BridgeSelectionStrategy.class.getName());
 
     /**
      * Total number of times selection succeeded because there was a bridge
@@ -63,14 +63,9 @@ abstract class BridgeSelectionStrategy
     private int totalSplitDueToLoad;
 
     /**
-     * The local region of the jicofo instance.
+     * Maximum participants per bridge in one conference, or {@code -1} for no maximum.
      */
-    private String localRegion = null;
-
-    /**
-     * Maximum participants per bridge in one conference.
-     */
-    private int maxParticipantsPerBridge = Integer.MAX_VALUE;
+    private final int maxParticipantsPerBridge = config.maxBridgeParticipants();
 
     /**
      * Selects a bridge to be used for a new participant in a conference.
@@ -107,8 +102,9 @@ abstract class BridgeSelectionStrategy
             if (bridge != null)
             {
                 logger.info("Selected initial bridge " + bridge
-                        + " with packetRate=" + bridge.getLastReportedPacketRatePps()
-                        + " for participantRegion=" + participantRegion);
+                        + " with reported stress=" + bridge.getLastReportedStressLevel()
+                        + " for participantRegion=" + participantRegion
+                        + " using strategy " + this.getClass().getSimpleName());
             }
             else
             {
@@ -138,7 +134,7 @@ abstract class BridgeSelectionStrategy
             if (bridge != null)
             {
                 logger.info("Selected bridge " + bridge
-                        + " with packetRate=" + bridge.getLastReportedPacketRatePps()
+                        + " with stress=" + bridge.getLastReportedStressLevel()
                         + " for participantRegion=" + participantRegion);
             }
             else
@@ -398,22 +394,6 @@ abstract class BridgeSelectionStrategy
         }
     }
 
-    String getLocalRegion()
-    {
-        return localRegion;
-    }
-
-    void setLocalRegion(String localRegion)
-    {
-        this.localRegion = localRegion;
-    }
-
-    void setMaxParticipantsPerBridge(int maxParticipantsPerBridge)
-    {
-        logger.info("Using max participants per bridge: " + maxParticipantsPerBridge);
-        this.maxParticipantsPerBridge = maxParticipantsPerBridge;
-    }
-
     /**
      * Checks whether a {@link Bridge} should be considered overloaded for a
      * particular conference.
@@ -426,7 +406,7 @@ abstract class BridgeSelectionStrategy
             Map<Bridge, Integer> conferenceBridges)
     {
         return bridge.isOverloaded()
-            || (conferenceBridges.containsKey(bridge)
+            || (maxParticipantsPerBridge > 0 && conferenceBridges.containsKey(bridge)
                 && conferenceBridges.get(bridge) >= maxParticipantsPerBridge);
     }
 

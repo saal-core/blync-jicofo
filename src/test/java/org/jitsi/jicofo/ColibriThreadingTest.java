@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,16 +17,15 @@
  */
 package org.jitsi.jicofo;
 
-import mock.*;
 import mock.jvb.*;
 import mock.xmpp.*;
 import mock.xmpp.colibri.*;
 
+import org.jitsi.jicofo.codec.*;
 import org.jitsi.protocol.xmpp.colibri.exception.*;
 import org.jitsi.xmpp.extensions.colibri.*;
 import org.jitsi.xmpp.extensions.jingle.*;
 
-import org.jitsi.jicofo.util.*;
 import org.jitsi.protocol.xmpp.colibri.*;
 
 import org.jivesoftware.smack.packet.*;
@@ -55,7 +54,7 @@ import static org.junit.Assert.*;
 @RunWith(JUnit4.class)
 public class ColibriThreadingTest
 {
-    static OSGiHandler osgi = OSGiHandler.getInstance();
+    private JicofoHarness harness = new JicofoHarness();
 
     private static MockPeerAllocator findCreator(
             AllocThreadingTestColibriConference    colibriConf,
@@ -73,18 +72,10 @@ public class ColibriThreadingTest
         return null;
     }
 
-    @Before
-    public void setUp()
-        throws Exception
-    {
-        osgi.init();
-    }
-
     @After
     public void tearDown()
-        throws Exception
     {
-        osgi.shutdown();
+        harness.shutdown();
     }
 
     /**
@@ -97,27 +88,17 @@ public class ColibriThreadingTest
     public void testColibriMultiThreading()
         throws Exception
     {
-        ProviderListener providerListener
-            = new ProviderListener(FocusBundleActivator.bundleContext);
-
-        MockProtocolProvider mockProvider
-            = (MockProtocolProvider) providerListener.obtainProvider(1000);
-
-        MockColibriOpSet colibriOpSet = mockProvider.getMockColibriOpSet();
-
         Jid mockBridgeJid = JidCreate.from("jvb.example.com");
 
-        MockVideobridge mockBridge
-            = new MockVideobridge(
-                    new MockXmppConnection(mockBridgeJid),
-                    mockBridgeJid);
+        MockVideobridge mockBridge = new MockVideobridge(new MockXmppConnection(mockBridgeJid), mockBridgeJid);
+        mockBridge.start();
 
-        mockBridge.start(osgi.bc);
-
-        AllocThreadingTestColibriConference colibriConf
-            = colibriOpSet.createAllocThreadingConf();
+        AllocThreadingTestColibriConference colibriConf =
+                new AllocThreadingTestColibriConference(
+                        harness.jicofoServices.getXmppServices().getClientConnection().getXmppConnection());
 
         colibriConf.setJitsiVideobridge(mockBridgeJid);
+        colibriConf.setName(JidCreate.entityBareFrom("foo@bar.com/zzz"));
 
         colibriConf.blockConferenceCreator(true);
         colibriConf.blockResponseReceive(true);
@@ -135,9 +116,7 @@ public class ColibriThreadingTest
             allocators[i].runChannelAllocation();
         }
 
-        MockPeerAllocator creator
-            = findCreator(
-                    colibriConf, Arrays.asList(allocators));
+        MockPeerAllocator creator = findCreator(colibriConf, Arrays.asList(allocators));
 
         assertNotNull(creator);
         assertEquals(0, colibriConf.allocRequestsSentCount());
@@ -157,8 +136,7 @@ public class ColibriThreadingTest
             String endpoint = colibriConf.nextRequestSent(5);
             if (endpoint == null)
             {
-                fail("Endpoints that have failed to " +
-                     "send their request: " + requestsToBeSent);
+                fail("Endpoints that have failed to send their request: " + requestsToBeSent);
             }
             else
             {
@@ -175,8 +153,7 @@ public class ColibriThreadingTest
             String endpoint = colibriConf.nextResponseReceived(5);
             if (endpoint == null)
             {
-                fail("Endpoints that have failed to " +
-                    "send their request: " + requestsToBeSent);
+                fail("Endpoints that have failed to send their request: " + requestsToBeSent);
             }
             else
             {
@@ -193,7 +170,7 @@ public class ColibriThreadingTest
         assertEquals(1, mockBridge.getConferenceCount());
         assertEquals(allocators.length, mockBridge.getEndpointCount());
 
-        mockBridge.stop(osgi.bc);
+        mockBridge.stop();
     }
 
     /**
@@ -206,14 +183,6 @@ public class ColibriThreadingTest
     public void testCreateFailure()
         throws Exception
     {
-        ProviderListener providerListener
-            = new ProviderListener(FocusBundleActivator.bundleContext);
-
-        MockProtocolProvider mockProvider
-            = (MockProtocolProvider) providerListener.obtainProvider(1000);
-
-        MockColibriOpSet colibriOpSet = mockProvider.getMockColibriOpSet();
-
         Jid mockBridgeJid = JidCreate.from("jvb.example.com");
 
         MockVideobridge mockBridge
@@ -221,10 +190,11 @@ public class ColibriThreadingTest
                     new MockXmppConnection(mockBridgeJid),
                     mockBridgeJid);
 
-        mockBridge.start(osgi.bc);
+        mockBridge.start();
 
-        AllocThreadingTestColibriConference colibriConf
-            = colibriOpSet.createAllocThreadingConf();
+        AllocThreadingTestColibriConference colibriConf =
+                new AllocThreadingTestColibriConference(
+                        harness.jicofoServices.getXmppServices().getClientConnection().getXmppConnection());
 
         colibriConf.setJitsiVideobridge(mockBridgeJid);
 
@@ -301,7 +271,7 @@ public class ColibriThreadingTest
         // No conference created
         assertEquals(0, mockBridge.getConferenceCount());
 
-        mockBridge.stop(osgi.bc);
+        mockBridge.stop();
     }
 
     /**
@@ -311,22 +281,14 @@ public class ColibriThreadingTest
 
     static List<ContentPacketExtension> createContents()
     {
-        List<ContentPacketExtension> contents
-            = new ArrayList<>();
+        OfferOptions offerOptions = new OfferOptions();
+        OfferOptionsKt.applyConstraints(offerOptions, config);
+        offerOptions.setRtx(false);
 
-        JingleOfferFactory jingleOfferFactory
-            = FocusBundleActivator.getJingleOfferFactory();
-
-        contents.add(jingleOfferFactory.createAudioContent(true, true, config));
-
-        contents.add(jingleOfferFactory.createVideoContent(true, true, false, config));
-
-        contents.add(jingleOfferFactory.createDataContent(true, true));
-
-        return contents;
+        return JingleOfferFactory.INSTANCE.createOffer(offerOptions);
     }
 
-    class MockPeerAllocator
+    static class MockPeerAllocator
     {
         private final String endpointId;
 

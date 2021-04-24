@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,24 +17,23 @@
  */
 package org.jitsi.jicofo.bridge;
 
+import kotlin.*;
 import org.jetbrains.annotations.*;
 import org.jitsi.jicofo.*;
+import org.jitsi.utils.concurrent.*;
+import org.jitsi.utils.event.*;
 import org.jitsi.xmpp.extensions.colibri.*;
 
-import org.jitsi.eventadmin.*;
-import org.jitsi.jicofo.discovery.Version;
-import org.jitsi.jicofo.event.*;
-import org.jitsi.service.configuration.*;
-
-import org.jitsi.utils.logging.*;
+import org.jitsi.utils.logging2.*;
 
 import org.json.simple.*;
 import org.jxmpp.jid.*;
-import org.osgi.framework.*;
 
-import java.lang.reflect.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.*;
+
+import static org.glassfish.jersey.internal.guava.Predicates.not;
 
 /**
  * Class exposes methods for selecting best videobridge from all currently
@@ -49,70 +48,25 @@ public class BridgeSelector
     /**
      * The logger.
      */
-    private final static Logger logger = Logger.getLogger(BridgeSelector.class);
+    private final static Logger logger = new LoggerImpl(BridgeSelector.class.getName());
 
     /**
-     * The name of the property which controls the
-     * {@link BridgeSelectionStrategy} to be used by this
-     * {@link BridgeSelector}.
+     * TODO: Refactor to use a common executor.
      */
-    public static final String BRIDGE_SELECTION_STRATEGY_PNAME
-        = "org.jitsi.jicofo.BridgeSelector.BRIDGE_SELECTION_STRATEGY";
-
-    public static final String MAX_PARTICIPANTS_PER_BRIDGE_PNAME
-        = "org.jitsi.jicofo.BridgeSelector.MAX_PARTICIPANTS_PER_BRIDGE";
-
-    public static final String MAX_BRIDGE_PACKET_RATE_PNAME
-            = "org.jitsi.jicofo.BridgeSelector.MAX_BRIDGE_PACKET_RATE";
-
-    public static final String AVG_PARTICIPANT_PACKET_RATE_PNAME
-            = "org.jitsi.jicofo.BridgeSelector.AVG_PARTICIPANT_PACKET_RATE";
-
-    /**
-     * Configuration property which specifies the amount of time since bridge
-     * instance failure before the selector will give it another try.
-     */
-    public static final String BRIDGE_FAILURE_RESET_THRESHOLD_PNAME
-        = "org.jitsi.focus.BRIDGE_FAILURE_RESET_THRESHOLD";
-
-    /**
-     * The name of the property which configured the local region.
-     */
-    public static final String LOCAL_REGION_PNAME
-        = "org.jitsi.jicofo.BridgeSelector.LOCAL_REGION";
-
-    /**
-     * Five minutes.
-     */
-    public static final long DEFAULT_FAILURE_RESET_THRESHOLD = 1L * 60L * 1000L;
-
-    /**
-     * Stores reference to <tt>EventHandler</tt> registration, so that it can be
-     * unregistered on {@link #dispose()}.
-     */
-    private ServiceRegistration<EventHandler> handlerRegistration;
-
-    /**
-     * The amount of time we will wait after bridge instance failure before it
-     * will get another chance.
-     */
-    private long failureResetThreshold = DEFAULT_FAILURE_RESET_THRESHOLD;
+    private final static ExecutorService eventEmitterExecutor
+        = Executors.newSingleThreadExecutor(new CustomizableThreadFactory("BridgeSelector-AsyncEventEmitter", false));
 
     /**
      * The map of bridge JID to <tt>Bridge</tt>.
      */
     private final Map<Jid, Bridge> bridges = new HashMap<>();
 
-    /**
-     * The <tt>EventAdmin</tt> used by this instance to fire/send
-     * <tt>BridgeEvent</tt>s.
-     */
-    private EventAdmin eventAdmin;
+    private final AsyncEventEmitter<EventHandler> eventEmitter = new AsyncEventEmitter<>(eventEmitterExecutor);
 
     /**
      * The bridge selection strategy.
      */
-    private final BridgeSelectionStrategy bridgeSelectionStrategy;
+    private final BridgeSelectionStrategy bridgeSelectionStrategy = BridgeConfig.config.getSelectionStrategy();
 
     private final JvbDoctor jvbDoctor = new JvbDoctor(this);
 
@@ -122,63 +76,8 @@ public class BridgeSelector
      */
     public BridgeSelector()
     {
-        bridgeSelectionStrategy
-            = Objects.requireNonNull(createBridgeSelectionStrategy());
         logger.info("Using " + bridgeSelectionStrategy.getClass().getName());
-    }
-
-    /**
-     * Creates a {@link BridgeSelectionStrategy} for this {@link BridgeSelector}.
-     * The class that will be instantiated is based on configuration.
-     */
-    private BridgeSelectionStrategy createBridgeSelectionStrategy()
-    {
-        BridgeSelectionStrategy strategy = null;
-
-        ConfigurationService config = FocusBundleActivator.getConfigService();
-        if (config != null)
-        {
-            String clazzName
-                = config.getString(BRIDGE_SELECTION_STRATEGY_PNAME);
-            if (clazzName != null)
-            {
-                try
-                {
-                    Class<?> clazz = Class.forName(clazzName);
-                    strategy = (BridgeSelectionStrategy)clazz.getConstructor().newInstance();
-                }
-                catch (ClassNotFoundException | InstantiationException |
-                    IllegalAccessException | NoSuchMethodException |
-                    InvocationTargetException e)
-                {
-                }
-
-                if (strategy == null)
-                {
-                    try
-                    {
-                        Class<?> clazz =
-                            Class.forName(
-                                getClass().getPackage().getName() + "." + clazzName);
-                        strategy = (BridgeSelectionStrategy)clazz.getConstructor().newInstance();
-                    }
-                    catch (ClassNotFoundException | InstantiationException |
-                        IllegalAccessException | NoSuchMethodException |
-                        InvocationTargetException e)
-                    {
-                        logger.error("Failed to find class for: " + clazzName, e);
-                    }
-                }
-            }
-        }
-
-        if (strategy == null)
-        {
-            strategy = new SingleBridgeSelectionStrategy();
-        }
-
-
-        return strategy;
+        jvbDoctor.start(getBridges());
     }
 
     /**
@@ -202,8 +101,7 @@ public class BridgeSelector
      * @param stats the last reported statistics
      * @return the {@link Bridge} instance for thee given JID.
      */
-    synchronized public Bridge addJvbAddress(
-            Jid bridgeJid, ColibriStatsExtension stats)
+    synchronized public Bridge addJvbAddress(Jid bridgeJid, ColibriStatsExtension stats)
     {
         Bridge bridge = bridges.get(bridgeJid);
         if (bridge != null)
@@ -212,7 +110,7 @@ public class BridgeSelector
             return bridge;
         }
 
-        Bridge newBridge = new Bridge(bridgeJid, getFailureResetThreshold());
+        Bridge newBridge = new Bridge(bridgeJid);
         if (stats != null)
         {
             newBridge.setStats(stats);
@@ -223,20 +121,6 @@ public class BridgeSelector
         notifyBridgeUp(newBridge);
         jvbDoctor.addBridge(newBridge.getJid());
         return newBridge;
-    }
-
-    /**
-     * Returns <tt>true</tt> if given JVB XMPP address is already known to this
-     * <tt>BridgeSelector</tt>.
-     *
-     * @param jvbJid the JVB JID to be checked eg. jitsi-videobridge.example.com
-     *
-     * @return <tt>true</tt> if given JVB XMPP address is already known to this
-     * <tt>BridgeSelector</tt>.
-     */
-    public synchronized boolean isJvbOnTheList(Jid jvbJid)
-    {
-        return bridges.containsKey(jvbJid);
     }
 
     /**
@@ -276,7 +160,41 @@ public class BridgeSelector
 
         if (bridge != null)
         {
-            bridge.setIsOperational(false);
+            // When a bridge returns a non-healthy status, we mark it as non-operational AND we move all conferences
+            // away from it.
+            setBridgeNonOperational(bridge, true);
+        }
+    }
+
+    @Override
+    public void healthCheckTimedOut(Jid bridgeJid)
+    {
+        Bridge bridge = bridges.get(bridgeJid);
+
+        if (bridge != null)
+        {
+            // We are more lenient when a health check times out as opposed to failing with an error. We mark it as
+            // non-operational to prevent new conferences being allocated there, but do not move existing conferences
+            // away from it (which is what `notifyBridgeDown` would trigger).
+            //
+            // The reason for this is to better handle the case of an intermittent network failure between the bridge
+            // and jicofo that does not affect the endpoints. In this case a conference will be moved away from the
+            // bridge if and when a request for that conference fails or times out. This prevents unnecessary moves when
+            // the bridge eventually recovers (the XMPP/MUC disconnect takes much longer than a health check timing
+            // out), and prevents a burst of requests due to all conferences being moved together (this is especially
+            // bad when multiple bridges experience network problems, and conference from one failing bridge are
+            // attempted to be moved to another failing bridge).
+            // The other possible case is that the bridge is not responding to jicofo, and is also unavailable to
+            // endpoints. In this case we rely on endpoints reporting ICE failures to jicofo, which then trigger a move.
+            setBridgeNonOperational(bridge, /* notifyBridgeDown= */ false);
+        }
+    }
+
+    private void setBridgeNonOperational(@NotNull Bridge bridge, boolean notifyBridgeDown)
+    {
+        bridge.setIsOperational(false);
+        if (notifyBridgeDown)
+        {
             notifyBridgeDown(bridge);
         }
     }
@@ -292,18 +210,37 @@ public class BridgeSelector
      */
     synchronized public Bridge selectBridge(
             @NotNull JitsiMeetConference conference,
-            String participantRegion,
-            boolean allowMultiBridge)
+            String participantRegion)
     {
-        List<Bridge> bridges
-            = getPrioritizedBridgesList().stream()
+        // the list of all known videobridges JIDs ordered by load and *operational* status.
+        ArrayList<Bridge> prioritizedBridges;
+        synchronized (this)
+        {
+            prioritizedBridges = new ArrayList<>(bridges.values());
+        }
+        Collections.sort(prioritizedBridges);
+
+        List<Bridge> candidateBridges
+            = prioritizedBridges.stream()
                 .filter(Bridge::isOperational)
+                .filter(not(Bridge::isInGracefulShutdown))
                 .collect(Collectors.toList());
+
+        // if there's no candidate bridge, we include bridges that are in graceful shutdown mode
+        // (the alternative is to crash the user)
+        if (candidateBridges.isEmpty())
+        {
+            candidateBridges
+                = prioritizedBridges.stream()
+                    .filter(Bridge::isOperational)
+                    .collect(Collectors.toList());
+        }
+
         return bridgeSelectionStrategy.select(
-            bridges,
+            candidateBridges,
             conference.getBridges(),
             participantRegion,
-            allowMultiBridge);
+            OctoConfig.config.getEnabled());
     }
 
     /**
@@ -312,52 +249,9 @@ public class BridgeSelector
      * @param conference the conference for which a bridge is to be selected.
      * @return the selected bridge, represented by its {@link Bridge}.
      */
-    public Bridge selectBridge(
-            @NotNull JitsiMeetConference conference)
+    public Bridge selectBridge(@NotNull JitsiMeetConference conference)
     {
-        return selectBridge(conference, null, false);
-    }
-
-    /**
-     * Returns the list of all known videobridges JIDs ordered by load and
-     * *operational* status. Not operational bridges are at the end of the list.
-     */
-    private List<Bridge> getPrioritizedBridgesList()
-    {
-        ArrayList<Bridge> bridgeList;
-        synchronized (this)
-        {
-            bridgeList = new ArrayList<>(bridges.values());
-        }
-        Collections.sort(bridgeList);
-
-        bridgeList.removeIf(bridge -> !bridge.isOperational());
-
-        return bridgeList;
-    }
-
-    /**
-     * The time since last bridge failure we will wait before it gets another
-     * chance.
-     *
-     * @return failure reset threshold in millis.
-     */
-    long getFailureResetThreshold()
-    {
-        return failureResetThreshold;
-    }
-
-    /**
-     * Sets the amount of time we will wait after bridge failure before it will
-     * get another chance.
-     *
-     * @param failureResetThreshold the amount of time in millis.
-     *
-     */
-    void setFailureResetThreshold(long failureResetThreshold)
-    {
-        this.failureResetThreshold = failureResetThreshold;
-        bridges.values().forEach(b -> b.setFailureResetThreshold(failureResetThreshold));
+        return selectBridge(conference, null);
     }
 
     /**
@@ -373,81 +267,31 @@ public class BridgeSelector
     {
         logger.debug("Propagating new bridge added event: " + bridge.getJid());
 
-        eventAdmin.postEvent(BridgeEvent.createBridgeUp(bridge.getJid()));
+        eventEmitter.fireEventAsync(handler ->
+        {
+            handler.bridgeAdded(bridge);
+            return Unit.INSTANCE;
+        });
     }
 
     private void notifyBridgeDown(Bridge bridge)
     {
         logger.debug("Propagating bridge went down event: " + bridge.getJid());
 
-        eventAdmin.postEvent(BridgeEvent.createBridgeDown(bridge.getJid()));
+        eventEmitter.fireEventAsync(handler ->
+        {
+            handler.bridgeRemoved(bridge);
+            return Unit.INSTANCE;
+        });
     }
 
-    /**
-     * Initializes this instance by loading the config and obtaining required
-     * service references.
-     */
-    public void init()
+    public void stop()
     {
-        ConfigurationService config = FocusBundleActivator.getConfigService();
-
-        setFailureResetThreshold(
-                config.getLong(
-                        BRIDGE_FAILURE_RESET_THRESHOLD_PNAME,
-                        DEFAULT_FAILURE_RESET_THRESHOLD));
-        logger.info(
-            "Bridge failure reset threshold: " + getFailureResetThreshold());
-
-        bridgeSelectionStrategy.setLocalRegion(
-                config.getString(LOCAL_REGION_PNAME, null));
-        logger.info("Local region: " + bridgeSelectionStrategy.getLocalRegion());
-
-        int maxParticipantsPerBridge = config.getInt(MAX_PARTICIPANTS_PER_BRIDGE_PNAME, -1);
-        if (maxParticipantsPerBridge > 0)
-        {
-            bridgeSelectionStrategy.setMaxParticipantsPerBridge(maxParticipantsPerBridge);
-        }
-
-        int maxBridgePacketRate = config.getInt(MAX_BRIDGE_PACKET_RATE_PNAME, -1);
-        if (maxBridgePacketRate > 0)
-        {
-            Bridge.setMaxTotalPacketRatePps(maxBridgePacketRate);
-        }
-
-        int avgParticipantPacketRate = config.getInt(AVG_PARTICIPANT_PACKET_RATE_PNAME, -1);
-        if (avgParticipantPacketRate > 0)
-        {
-            Bridge.setAvgParticipantPacketRatePps(avgParticipantPacketRate);
-        }
-
-        this.eventAdmin = FocusBundleActivator.getEventAdmin();
-        if (eventAdmin == null)
-        {
-            throw new IllegalStateException("EventAdmin service not found");
-        }
-
-        jvbDoctor.start(FocusBundleActivator.bundleContext, getBridges());
+        jvbDoctor.stop();
     }
 
     /**
-     * Unregisters any event listeners.
-     */
-    public void dispose()
-    {
-        if (jvbDoctor != null)
-        {
-            jvbDoctor.stop();
-        }
-        if (handlerRegistration != null)
-        {
-            handlerRegistration.unregister();
-            handlerRegistration = null;
-        }
-    }
-
-    /**
-     * @return the {@link Bridge} for the bridge with a particular XMPP
-     * JID.
+     * @return the {@link Bridge} for the bridge with a particular XMPP JID.
      * @param jid the JID of the bridge.
      */
     public Bridge getBridge(Jid jid)
@@ -471,9 +315,16 @@ public class BridgeSelector
         return new ArrayList<>(bridges.values());
     }
 
+    public int getInGracefulShutdownBridgeCount()
+    {
+        return (int) bridges.values().stream().filter(Bridge::isInGracefulShutdown).count();
+    }
+
     public int getOperationalBridgeCount()
     {
-        return (int) bridges.values().stream().filter(Bridge::isOperational).count();
+        return (int) bridges.values().stream()
+            .filter(Bridge::isOperational)
+            .filter(not(Bridge::isInGracefulShutdown)).count();
     }
 
     @SuppressWarnings("unchecked")
@@ -484,7 +335,23 @@ public class BridgeSelector
         JSONObject stats = bridgeSelectionStrategy.getStats();
         stats.put("bridge_count", getBridgeCount());
         stats.put("operational_bridge_count", getOperationalBridgeCount());
+        stats.put("in_shutdown_bridge_count", getInGracefulShutdownBridgeCount());
 
         return stats;
+    }
+
+    public void addHandler(EventHandler eventHandler)
+    {
+        eventEmitter.addHandler(eventHandler);
+    }
+    public void removeHandler(EventHandler eventHandler)
+    {
+        eventEmitter.removeHandler(eventHandler);
+    }
+
+    public interface EventHandler
+    {
+        void bridgeRemoved(Bridge bridge);
+        void bridgeAdded(Bridge bridge);
     }
 }

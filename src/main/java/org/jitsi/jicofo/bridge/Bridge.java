@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,16 +17,17 @@
  */
 package org.jitsi.jicofo.bridge;
 
-import org.jitsi.jicofo.util.*;
+import edu.umd.cs.findbugs.annotations.*;
+import org.jitsi.jicofo.xmpp.*;
 import org.jitsi.utils.stats.*;
 import org.jitsi.xmpp.extensions.colibri.*;
-import static org.jitsi.xmpp.extensions.colibri.ColibriStatsExtension.*;
-
-import org.jitsi.jicofo.discovery.*;
-import org.jitsi.utils.logging.*;
 import org.jxmpp.jid.*;
 
+import java.time.*;
 import java.util.*;
+
+import static org.jitsi.xmpp.extensions.colibri.ColibriStatsExtension.*;
+import static org.jitsi.jicofo.bridge.BridgeConfig.config;
 
 /**
  * Represents a jitsi-videobridge instance, reachable at a certain JID, which
@@ -34,17 +35,14 @@ import java.util.*;
  * to the jitsi-videobridge instance, such as numbers of channels and streams,
  * the region in which the instance resides, etc.
  *
+ * TODO fix comparator (should not be reflexive unless the objects are the same?)
  * @author Pawel Domas
  * @author Boris Grozev
  */
+@SuppressFBWarnings("EQ_COMPARETO_USE_OBJECT_EQUALS")
 public class Bridge
     implements Comparable<Bridge>
 {
-    /**
-     * The {@link Logger} used by the {@link Bridge} class and its instances.
-     */
-    private static final Logger logger = Logger.getLogger(Bridge.class);
-
     /**
      * A {@link ColibriStatsExtension} instance with no stats.
      */
@@ -52,51 +50,15 @@ public class Bridge
         = new ColibriStatsExtension();
 
     /**
-     * We assume that each recently added participant contributes this much
-     * to the bridge's packet rate.
+     * This is static for the purposes of tests.
+     * TODO: just use the config and port the tests.
      */
-    private static int AVG_PARTICIPANT_PACKET_RATE_PPS;
+    private static long failureResetThreshold = config.failureResetThreshold().toMillis();
 
-    /**
-     * We assume this is the maximum packet rate that a bridge can handle.
-     */
-    public static double MAX_TOTAL_PACKET_RATE_PPS;
-
-    static
+    static void setFailureResetThreshold(long newValue)
     {
-        MaxPacketRateCalculator packetRateCalculator = new MaxPacketRateCalculator(
-            4 /* numberOfConferenceBridges */,
-            20 /* numberOfGlobalSenders */,
-            2 /* numberOfSpeakers */,
-            20 /* numberOfLocalSenders */,
-            5 /* numberOfLocalReceivers */
-        );
-
-        setMaxTotalPacketRatePps(
-            packetRateCalculator.computeIngressPacketRatePps()
-                + packetRateCalculator.computeEgressPacketRatePps());
-
-        setAvgParticipantPacketRatePps(500);
+        failureResetThreshold = newValue;
     }
-
-    static void setMaxTotalPacketRatePps(int maxTotalPacketRatePps)
-    {
-        MAX_TOTAL_PACKET_RATE_PPS = maxTotalPacketRatePps;
-        logger.info("Setting max total packet rate of " + MAX_TOTAL_PACKET_RATE_PPS);
-    }
-
-    static void setAvgParticipantPacketRatePps(int avgParticipantPacketRatePps)
-    {
-        AVG_PARTICIPANT_PACKET_RATE_PPS = avgParticipantPacketRatePps;
-        logger.info("Setting average participant packet rate of " + AVG_PARTICIPANT_PACKET_RATE_PPS);
-    }
-    /**
-     * The stress-level beyond which we consider a bridge to be
-     * overloaded/overstressed.
-     */
-    private static final double OVERSTRESSED_THRESHOLD = .8;
-
-    private long failureResetThreshold;
 
     /**
      * The XMPP address of the bridge.
@@ -104,14 +66,26 @@ public class Bridge
     private final Jid jid;
 
     /**
-     * Keep track of the recently allocated or removed channels.
+     * Keep track of the recently added endpoints.
      */
-    private final RateStatistics newEndpointsRate = new RateStatistics(10000);
+    private final RateTracker newEndpointsRate
+            = new RateTracker(config.participantRampupInterval(), Duration.ofMillis(100));
 
     /**
      * The last reported packet rate in packets per second.
      */
     private int lastReportedPacketRatePps = 0;
+
+    /**
+     * The last report stress level
+     */
+    private double lastReportedStressLevel = 0.0;
+
+    /**
+     * For older bridges which don't support reporting their stress level we'll fall back
+     * to calculating the stress manually via the packet rate.
+     */
+    private boolean usePacketRateStatForStress = true;
 
     /**
      * Holds bridge version (if known - not all bridge version are capable of
@@ -134,8 +108,17 @@ public class Bridge
      * working bridges go down and might eventually get elevated back to
      * {@code true}.
      */
-    private volatile boolean isOperational
-        = true /* we assume it is operational */;
+    private volatile boolean isOperational = true;
+
+    /**
+     * Start out with the configured value, update if the bridge reports a value.
+     */
+    private double averageParticipantStress = config.averageParticipantStress();
+
+    /**
+     * Stores a boolean that indicates whether the bridge is in graceful shutdown mode.
+     */
+    private boolean shutdownInProgress = false /* we assume it is not shutting down */;
 
     /**
      * The time when this instance has failed.
@@ -149,13 +132,7 @@ public class Bridge
 
     Bridge(Jid jid)
     {
-        this(jid, BridgeSelector.DEFAULT_FAILURE_RESET_THRESHOLD);
-    }
-
-    Bridge(Jid jid, long failureResetThreshold)
-    {
         this.jid = Objects.requireNonNull(jid, "jid");
-        this.failureResetThreshold = failureResetThreshold;
     }
 
     /**
@@ -176,6 +153,18 @@ public class Bridge
         }
         stats = this.stats;
 
+        Double stressLevel = UtilKt.getDouble(stats, "stress_level");
+        if (stressLevel != null)
+        {
+            lastReportedStressLevel = stressLevel;
+            usePacketRateStatForStress = false;
+        }
+        Double averageParticipantStress = UtilKt.getDouble(stats, "average_participant_stress");
+        if (averageParticipantStress != null)
+        {
+            this.averageParticipantStress = averageParticipantStress;
+        }
+
         Integer packetRateDown = null;
         Integer packetRateUp = null;
         try
@@ -183,7 +172,7 @@ public class Bridge
             packetRateDown = stats.getValueAsInt(PACKET_RATE_DOWNLOAD);
             packetRateUp = stats.getValueAsInt(PACKET_RATE_UPLOAD);
         }
-        catch (NumberFormatException nfe)
+        catch (NumberFormatException ignored)
         {
         }
 
@@ -192,15 +181,9 @@ public class Bridge
             lastReportedPacketRatePps = packetRateDown + packetRateUp;
         }
 
-        // FIXME graceful shutdown should be treated separately from
-        //  "operational". When jvb is in graceful shutdown it does not allow
-        //  any new conferences but it allows to add participants to
-        //  the existing ones. Marking a bridge not operational while in
-        //  graceful shutdown will move the conference as soon as any new
-        //  participant joins and that is not very graceful.
         if (Boolean.parseBoolean(stats.getValueAsString(SHUTDOWN_IN_PROGRESS)))
         {
-            setIsOperational(false);
+            shutdownInProgress = true;
         }
 
         String newVersion = stats.getValueAsString(VERSION);
@@ -250,27 +233,48 @@ public class Bridge
     }
 
     /**
-     * The least value is returned the least the bridge is loaded. Currently
-     * we use the bitrate to estimate load.
-     * <p>
-     * {@inheritDoc}
+     * Returns a negative number if this instance is more able to serve conferences than o. For details see
+     * {@link #compare(Bridge, Bridge)}.
+     *
+     * @param o the other bridge instance
+     *
+     * @return a negative number if this instance is more able to serve conferences than o
      */
     @Override
     public int compareTo(Bridge o)
     {
-        boolean meOperational = isOperational();
-        boolean otherOperational = o.isOperational();
+        return compare(this, o);
+    }
 
-        if (meOperational && !otherOperational)
+    /**
+     * Returns a negative number if b1 is more able to serve conferences than b2. The computation is based on the
+     * following three comparisons
+     *
+     * operating bridges < non operating bridges
+     * not in graceful shutdown mode < bridges in graceful shutdown mode
+     * lower stress < higher stress
+     *
+     * @param b1 the 1st bridge instance
+     * @param b2 the 2nd bridge instance
+     *
+     * @return a negative number if b1 is more able to serve conferences than b2
+     */
+    public static int compare(Bridge b1, Bridge b2)
+    {
+        int myPriority = getPriority(b1);
+        int otherPriority = getPriority(b2);
+
+        if (myPriority != otherPriority)
         {
-            return -1;
-        }
-        else if (!meOperational && otherOperational)
-        {
-            return 1;
+            return myPriority - otherPriority;
         }
 
-        return Double.compare(this.getStress(), o.getStress());
+        return Double.compare(b1.getStress(), b2.getStress());
+    }
+
+    private static int getPriority(Bridge b)
+    {
+        return b.isOperational() ? (b.isInGracefulShutdown() ? 2 : 1) : 3;
     }
 
     /**
@@ -278,7 +282,7 @@ public class Bridge
      */
     public void endpointAdded()
     {
-        newEndpointsRate.update(1, System.currentTimeMillis());
+        newEndpointsRate.update(1);
     }
 
     /**
@@ -323,38 +327,53 @@ public class Bridge
     }
 
     /**
+     * Gets the "stress" of the bridge, represented as a double between 0 and 1 (though technically the value
+     * can exceed 1).
+     * @return this bridge's stress level
+     */
+    public double getStress()
+    {
+        if (usePacketRateStatForStress)
+        {
+            return getStressFromPacketRate();
+        }
+        // While a stress of 1 indicates a bridge is fully loaded, we allow
+        // larger values to keep sorting correctly.
+        return (lastReportedStressLevel + Math.max(0, getRecentlyAddedEndpointCount()) * averageParticipantStress);
+    }
+
+    /**
      * Returns the "stress" of the bridge. The stress is computed based on the
      * total packet rate reported by the bridge and the video stream diff
-     * estimation since the last update from the bridge.
+     * estimation since the last update from the bridge. Note that this is techincally
+     * deprecated and only exists for backwards compatibility with bridges who don't
+     * yet support reporting their stress level directly.
      *
      * @return the sum of the last total reported packet rate (in pps) and an
      * estimation of the packet rate of the streams that we estimate that the bridge
      * hasn't reported to Jicofo yet. The estimation is the product of the
      * number of unreported streams and a constant C (which we set to 500 pps).
      */
-    public double getStress()
+    private double getStressFromPacketRate()
     {
-        double stress =
-            (lastReportedPacketRatePps
-                + Math.max(0, getRecentlyAddedEndpointCount()) * AVG_PARTICIPANT_PACKET_RATE_PPS)
-            / MAX_TOTAL_PACKET_RATE_PPS;
         // While a stress of 1 indicates a bridge is fully loaded, we allow
         // larger values to keep sorting correctly.
-        return stress;
+        return (lastReportedPacketRatePps
+            + Math.max(0, getRecentlyAddedEndpointCount()) * config.averageParticipantPacketRatePps())
+            / (double) config.maxBridgePacketRatePps();
     }
 
     /**
-     * @return true if the stress of the bridge is greater-than-or-equal to
-     * {@link #OVERSTRESSED_THRESHOLD}.
+     * @return true if the stress of the bridge is greater-than-or-equal to the threshold.
      */
     public boolean isOverloaded()
     {
-        return getStress() >= OVERSTRESSED_THRESHOLD;
+        return getStress() >= config.stressThreshold();
     }
 
-    public int getLastReportedPacketRatePps()
+    public double getLastReportedStressLevel()
     {
-        return lastReportedPacketRatePps;
+        return lastReportedStressLevel;
     }
 
     public int getOctoVersion()
@@ -362,8 +381,8 @@ public class Bridge
         return octoVersion;
     }
 
-    void setFailureResetThreshold(long failureResetThreshold)
+    public boolean isInGracefulShutdown()
     {
-        this.failureResetThreshold = failureResetThreshold;
+        return shutdownInProgress;
     }
 }

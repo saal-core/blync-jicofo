@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2016 Atlassian Pty Ltd
+ * Copyright @ 2016-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,10 @@
  */
 package org.jitsi.jicofo;
 
-import net.java.sip.communicator.service.protocol.*;
+import org.jitsi.impl.protocol.xmpp.*;
 import org.jitsi.jicofo.bridge.*;
-import org.jitsi.jicofo.recording.jibri.*;
-import org.jitsi.protocol.xmpp.*;
-import org.jitsi.utils.logging.*;
+import org.jitsi.jicofo.jibri.*;
+import org.jitsi.jicofo.xmpp.muc.*;
 import org.jxmpp.jid.*;
 
 import java.util.*;
@@ -36,12 +35,6 @@ import java.util.*;
  */
 public interface JitsiMeetConference
 {
-    /**
-     * @return the <tt>Logger</tt> instance which might be used to inherit
-     * the logging level assigned on the per conference basis.
-     */
-    Logger getLogger();
-
     /**
      * Checks how many {@link Participant}s are in the conference.
      * @return an integer greater than 0.
@@ -66,19 +59,13 @@ public interface JitsiMeetConference
     /**
      * Returns the name of conference multi-user chat room.
      */
-    public EntityBareJid getRoomName();
-
-    /**
-     * Returns focus MUC JID if it is in the room or <tt>null</tt> otherwise.
-     * JID example: room_name@muc.server.com/focus_nickname.
-     */
-    public EntityFullJid getFocusJid();
+    EntityBareJid getRoomName();
 
     /**
      * Returns <tt>ChatRoom2</tt> instance for the MUC this instance is
      * currently in or <tt>null</tt> if it isn't in any.
      */
-    public ChatRoom2 getChatRoom();
+    ChatRoom getChatRoom();
 
     /**
      * Sets the value of the <tt>startMuted</tt> property of this instance.
@@ -88,28 +75,23 @@ public interface JitsiMeetConference
      */
     void setStartMuted(boolean[] startMuted);
 
-    /**
-     * @return a stats snapshot for all {@link JibriSession}s used in this
-     * conference.
-     */
-    JibriSessionStats getJibriSessionStats();
+    default JibriRecorder getJibriRecorder()
+    {
+        return null;
+    }
+
+    default JibriSipGateway getJibriSipGateway()
+    {
+        return null;
+    }
+
 
     /**
      * Gets the role of a member in the conference.
      * @param jid the member whose role is to be determined.
      * @return The member's role or <tt>null</tt> if the JID is not a member.
      */
-    ChatRoomMemberRole getRoleForMucJid(Jid jid);
-
-    /**
-     * Checks if given MUC jid belongs to the focus user.
-     *
-     * @param jid the full MUC address to check.
-     *
-     * @return <tt>true</tt> if given <tt>jid</tt> belongs to the focus
-     *         participant or <tt>false</tt> otherwise.
-     */
-    boolean isFocusMember(Jid jid);
+    MemberRole getRoleForMucJid(Jid jid);
 
     /**
      * Whether this conference should be considered when generating statistics.
