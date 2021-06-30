@@ -17,6 +17,10 @@
  */
 package org.jitsi.jicofo.xmpp
 
+import ai.saal.blync.service.ConferenceHostService
+import ai.saal.blync.service.ConferenceRoomService
+import ai.saal.blync.service.impl.ConferenceHostServiceImpl
+import ai.saal.blync.service.impl.ConferenceRoomServiceImpl
 import org.jitsi.jicofo.FocusManager
 import org.jitsi.jicofo.TaskPools
 import org.jitsi.jicofo.auth.AuthenticationAuthority
@@ -29,6 +33,7 @@ import org.jivesoftware.smack.iqrequest.AbstractIqRequestHandler
 import org.jivesoftware.smack.iqrequest.IQRequestHandler
 import org.jivesoftware.smack.packet.IQ
 import org.jivesoftware.smack.packet.XMPPError
+
 
 /**
  * Handles XMPP requests for a new conference ([ConferenceIq]).
@@ -61,8 +66,37 @@ class ConferenceIqHandler(
         if (error != null) {
             return error
         }
+        var isPermitted = false
+        val from = query.from.toString()
+        if (!roomExists) {
+            val conferenceHostService: ConferenceHostService = ConferenceHostServiceImpl()
+            isPermitted = conferenceHostService.validateHostPermission(room.toString(), from)
+            logger.info("Blync manger return => $isPermitted")
+        }
+
+        logger.info("isPermitted => $isPermitted")
+
+
+        val userAccount = from.split("/").toTypedArray()[0]
+        if(!isPermitted && !roomExists){
+            response.type = org.jivesoftware.smack.packet.IQ.Type.result;
+            response.stanzaId = query.stanzaId
+            response.from = query.to
+            response.to = query.from
+            response.room = query.room
+            response.isReady = false
+            logger.warn("User $userAccount don't have permission for starting room $room")
+            return response;
+        }
 
         var ready: Boolean = focusManager.conferenceRequest(room, query.propertiesMap)
+
+        logger.info("Ready status for room $room - > $ready")
+        if (ready && !roomExists) {
+            val conferenceRoomService: ConferenceRoomService = ConferenceRoomServiceImpl()
+            conferenceRoomService.updateRoomState(room.toString(), "STARTED")
+        }
+
         if (!isFocusAnonymous && authAuthority == null) {
             // Focus is authenticated system admin, so we let them in immediately. Focus will get OWNER anyway.
             ready = true
