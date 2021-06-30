@@ -17,6 +17,8 @@
  */
 package org.jitsi.jicofo;
 
+import ai.saal.blync.service.ConferenceRoomService;
+import ai.saal.blync.service.impl.ConferenceRoomServiceImpl;
 import edu.umd.cs.findbugs.annotations.*;
 import org.jetbrains.annotations.*;
 import org.jitsi.impl.protocol.xmpp.*;
@@ -98,6 +100,13 @@ public class JitsiMeetConferenceImpl
     /**
      * The instance of conference configuration.
      */
+
+    /**
+     * this is used to communicate with conference manager
+     */
+    ConferenceRoomService conferenceRoomService = new ConferenceRoomServiceImpl();
+
+
     @NotNull
     private final JitsiMeetConfig config;
 
@@ -1110,9 +1119,20 @@ public class JitsiMeetConferenceImpl
             if (participants.size() == 1)
             {
                 rescheduleSingleParticipantTimeout();
+                rescheduleSingleParticipantTimeout();
+                Boolean isDirectCall = conferenceRoomService.isDirectCall(roomName.toString());
+                if(isDirectCall){
+                    logger.info("updating room status to Stopped room ID  = "+roomName.toString());
+                    conferenceRoomService.updateRoomState(roomName.toString(),"STOPPED");
+                    logger.info("Terminating conference id = "+roomName.toString());
+                    stop();
+                }
             }
             else if (participants.size() == 0)
             {
+                logger.info("participants size() == 0 notify Blync manager  ");
+
+                conferenceRoomService.updateRoomState(roomName.toString(),"STOPPED");
                 stop();
             }
         }

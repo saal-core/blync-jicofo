@@ -24,9 +24,16 @@ public class ConferenceHostServiceImpl implements ConferenceHostService {
         hostJidReq.setJid(Jid);
         conferenceId = conferenceId.split("@")[0];
         String hostUrl = url.replace("{confId}",conferenceId);
-        logger.info("Requesting Blync management service for validating host room creation permission ------- host Id = "+ Jid +" Room name "+conferenceId);
-        ValidationRes validationRes = RestClient.invokeHostValidation(hostUrl, hostJidReq);
-        logger.info("Response from Blync manager for host Id = "+ Jid +" Room name "+conferenceId +" Status is =>"+validationRes.getStatus());
-        return validationRes.getStatus().toString().equals("SUCCESS") ? true : false;
+
+        try{
+            logger.info(hostUrl+" : Requesting Blync management service for validating host room creation permission ------- host Id = "+ Jid +" Room name "+conferenceId);
+            ValidationRes validationRes = RestClient.invokeHostValidation(hostUrl, hostJidReq);
+            logger.info("Response from Blync manager for host Id = "+ Jid +" Room name "+conferenceId +" Status is =>"+validationRes.getStatus());
+            return validationRes.getStatus().toString().equals("SUCCESS") ? true : false;
+        }catch (Exception e){
+            System.out.println("some thing wrong "+e.getMessage());
+            return true;
+        }
+
     }
 }
