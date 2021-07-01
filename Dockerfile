@@ -7,7 +7,7 @@ RUN mvn dependency:go-offline
 RUN mvn clean package -DskipTests
 
 # #################################### RUN STAGE ####################################
-FROM scr.saal.ai/jicofo:3
+FROM scr.saal.ai/jicofo:5
 
 COPY --from=build-phase /app /app
 
