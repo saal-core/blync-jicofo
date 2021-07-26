@@ -17,6 +17,8 @@
  */
 package org.jitsi.jicofo;
 
+import ai.saal.blync.service.ConferenceHostService;
+import ai.saal.blync.service.impl.ConferenceHostServiceImpl;
 import org.jetbrains.annotations.*;
 import org.jitsi.impl.protocol.xmpp.*;
 import org.jitsi.jicofo.auth.*;
@@ -55,6 +57,8 @@ public class ChatRoomRoleAndPresence
      * Authentication authority used to verify users.
      */
     private AuthenticationAuthority authAuthority;
+
+    ConferenceHostService conferenceHostService = new ConferenceHostServiceImpl();
 
     /**
      * The {@link MemberRole} of our local user in the MUC.
@@ -202,30 +206,35 @@ public class ChatRoomRoleAndPresence
 
         for (ChatRoomMember member : chatRoom.getMembers())
         {
-            if (conference.isFocusMember(member)
-                || member.isRobot()
-                // FIXME make Jigasi advertise itself as a robot
-                || conference.isSipGateway(member))
-            {
-                continue;
-            }
-            else if (member.getRole().hasOwnerRights())
-            {
-                // Select existing owner
-                owner = member;
-                logger.info("Owner already in the room: " + member.getName());
-                break;
-            }
-            else
-            {
-                // Elect new owner
-                if (grantOwner(member.getJid()))
+            logger.info("Conference owner is null");
+            Jid jabberId = member.getJid();
+            Boolean isPermitted = conferenceHostService.validateHostPermission(chatRoom.getName(),jabberId.toString());
+            if(isPermitted) {
+                if (conference.isFocusMember(member)
+                    || member.isRobot()
+                    // FIXME make Jigasi advertise itself as a robot
+                    || conference.isSipGateway(member))
                 {
-                    logger.info("Granted owner to " + member.getName());
-
-                    owner = member;
+                    continue;
                 }
-                break;
+                else if (member.getRole().hasOwnerRights())
+                {
+                    // Select existing owner
+                    owner = member;
+                    logger.info("Owner already in the room: " + member.getName());
+                    break;
+                }
+                else
+                {
+                    // Elect new owner
+                    if (grantOwner(member.getJid()))
+                    {
+                        logger.info("Granted owner to " + member.getName());
+
+                        owner = member;
+                    }
+                    break;
+                }
             }
         }
     }
