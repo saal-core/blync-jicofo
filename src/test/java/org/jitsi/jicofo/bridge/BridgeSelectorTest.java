@@ -231,15 +231,15 @@ public class BridgeSelectorTest
         ColibriStatsExtension statsExtension = new ColibriStatsExtension();
 
         statsExtension.addStat(
-            new Stat(
+            new ColibriStatsExtension.Stat(
             "stress_level", stress
             )
         );
 
         if (region != null)
         {
-            statsExtension.addStat(new Stat(REGION, region));
-            statsExtension.addStat(new Stat(RELAY_ID, region));
+            statsExtension.addStat(new ColibriStatsExtension.Stat(REGION, region));
+            statsExtension.addStat(new ColibriStatsExtension.Stat(RELAY_ID, region));
         }
 
         return statsExtension;

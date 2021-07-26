@@ -92,12 +92,12 @@ public abstract class AbstractChannelAllocator implements Runnable
      * invite a specific {@link Participant} into a specific
      * {@link JitsiMeetConferenceImpl} (using a specific jitsi-videobridge
      * instance specified by a
-     * {@link JitsiMeetConferenceImpl.BridgeSession}).
+     * {@link org.jitsi.jicofo.JitsiMeetConferenceImpl.BridgeSession}).
      *
      * @param meetConference the {@link JitsiMeetConferenceImpl} into which to
      * invite {@code participant}.
      * @param bridgeSession the
-     * {@link JitsiMeetConferenceImpl.BridgeSession} which
+     * {@link org.jitsi.jicofo.JitsiMeetConferenceImpl.BridgeSession} which
      * identifies the jitsi-videobridge instance on which to allocate channels.
      * @param participant the participant to be invited.
      * @param startMuted an array which must have the size of 2 where the first

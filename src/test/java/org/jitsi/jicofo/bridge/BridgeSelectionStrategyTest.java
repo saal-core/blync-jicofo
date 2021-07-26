@@ -52,7 +52,7 @@ public class BridgeSelectionStrategyTest
         ColibriStatsExtension statsExtension = new ColibriStatsExtension();
 
         statsExtension.addStat(
-            new Stat(
+            new ColibriStatsExtension.Stat(
                 "stress_level",
                 stress
             )
@@ -61,10 +61,10 @@ public class BridgeSelectionStrategyTest
         if (region != null)
         {
             statsExtension.addStat(
-                    new Stat(
+                    new ColibriStatsExtension.Stat(
                             REGION, region));
             statsExtension.addStat(
-                    new Stat(
+                    new ColibriStatsExtension.Stat(
                             RELAY_ID, region));
         }
 
@@ -74,7 +74,7 @@ public class BridgeSelectionStrategyTest
     private static void setOctoVersion(Bridge bridge, int octoVersion)
     {
         ColibriStatsExtension stats = new ColibriStatsExtension();
-        stats.addStat(new Stat("octo_version", octoVersion));
+        stats.addStat(new ColibriStatsExtension.Stat("octo_version", octoVersion));
         bridge.setStats(stats);
     }
 

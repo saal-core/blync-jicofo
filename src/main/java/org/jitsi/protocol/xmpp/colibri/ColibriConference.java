@@ -88,10 +88,10 @@ public interface ColibriConference
      * @return <tt>ColibriConferenceIQ</tt> that describes allocated channels.
      */
     default ColibriConferenceIQ createColibriChannels(
-            String endpointId,
-            String statsId,
-            boolean peerIsInitiator,
-            List<ContentPacketExtension> contents)
+        String endpointId,
+        String statsId,
+        boolean peerIsInitiator,
+        List<ContentPacketExtension> contents)
         throws ColibriException
     {
         return createColibriChannels(
@@ -156,10 +156,10 @@ public interface ColibriConference
      * content described by <tt>localChannelsInfo</tt>.
      */
     default void updateChannelsInfo(
-            ColibriConferenceIQ localChannelsInfo,
-            Map<String, RtpDescriptionPacketExtension> rtpInfoMap,
-            MediaSourceMap sources,
-            MediaSourceGroupMap sourceGroups)
+        ColibriConferenceIQ localChannelsInfo,
+        Map<String, RtpDescriptionPacketExtension> rtpInfoMap,
+        MediaSourceMap sources,
+        MediaSourceGroupMap sourceGroups)
     {
         updateChannelsInfo(
             localChannelsInfo,

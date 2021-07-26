@@ -18,7 +18,6 @@
 package org.jitsi.jicofo;
 
 import org.jetbrains.annotations.*;
-import org.jitsi.impl.protocol.xmpp.*;
 import org.jitsi.jicofo.health.*;
 import org.jitsi.jicofo.jibri.*;
 import org.jitsi.jicofo.stats.*;
@@ -41,7 +40,7 @@ import java.util.logging.*;
  * @author Boris Grozev
  */
 public class FocusManager
-    implements JitsiMeetConferenceImpl.ConferenceListener
+    implements JitsiMeetConferenceImpl.ConferenceListener, ConferenceStore
 {
     /**
      * The logger used by this instance.
@@ -71,6 +70,8 @@ public class FocusManager
      */
     private final Map<EntityBareJid, JitsiMeetConferenceImpl> conferences = new ConcurrentHashMap<>();
 
+    private final List<JitsiMeetConference> conferencesCache = new CopyOnWriteArrayList<>();
+
     /**
      * The set of the IDs of conferences in {@link #conferences}.
      */
@@ -86,17 +87,6 @@ public class FocusManager
      * The list of {@link FocusAllocationListener}.
      */
     private final List<FocusAllocationListener> focusAllocListeners = new ArrayList<>();
-
-    /**
-     * The XMPP provider for the connection to clients (endpoints).
-     */
-    private XmppProvider clientXmppProvider;
-
-    /**
-     * The XMPP provider for the service connection (for bridges). This may be the same instance as
-     * {@link #clientXmppProvider}.
-     */
-    private XmppProvider serviceXmppProvider;
 
     /**
      * A class that holds Jicofo-wide statistics
@@ -117,7 +107,7 @@ public class FocusManager
     /**
      * Starts this manager.
      */
-    public void start(XmppProvider clientXmppProvider, XmppProvider serviceXmppProvider)
+    public void start()
     {
         expireThread.start();
 
@@ -140,9 +130,6 @@ public class FocusManager
             logger.info("Initialized octoId=" + octoId);
             this.octoId = octoId;
         }
-
-        this.clientXmppProvider = clientXmppProvider;
-        this.serviceXmppProvider = serviceXmppProvider;
     }
 
     /**
@@ -283,12 +270,11 @@ public class FocusManager
             conference
                     = new JitsiMeetConferenceImpl(
                         room,
-                        clientXmppProvider,
-                        serviceXmppProvider,
                         this, config, logLevel,
                         id, includeInStatistics);
 
             conferences.put(room, conference);
+            conferencesCache.add(conference);
             conferenceGids.add(id);
         }
 
@@ -357,6 +343,7 @@ public class FocusManager
         synchronized (conferencesSyncRoot)
         {
             conferences.remove(roomName);
+            conferencesCache.remove(conference);
             conferenceGids.remove(conference.getId());
 
             // It is not clear whether the code below necessarily needs to
@@ -408,12 +395,19 @@ public class FocusManager
      * @return the {@code JitsiMeetConference} for the specified
      * {@code roomName} or {@code null} if no conference has been allocated yet
      */
+    @Override
     public JitsiMeetConferenceImpl getConference(EntityBareJid roomName)
     {
         synchronized (conferencesSyncRoot)
         {
             return conferences.get(roomName);
         }
+    }
+
+    @Override
+    public List<JitsiMeetConference> getAllConferences()
+    {
+        return getConferences();
     }
 
     /**
@@ -424,10 +418,7 @@ public class FocusManager
      */
     public List<JitsiMeetConference> getConferences()
     {
-        synchronized (conferencesSyncRoot)
-        {
-            return new ArrayList<>(conferences.values());
-        }
+        return conferencesCache;
     }
 
     private int getNonHealthCheckConferenceCount()
@@ -526,10 +517,6 @@ public class FocusManager
             conferenceSizesJson.add(size);
         }
         stats.put("conference_sizes", conferenceSizesJson);
-
-        // XMPP traffic stats
-        stats.put("xmpp", clientXmppProvider.getStats());
-        stats.put("xmpp_service", serviceXmppProvider.getStats());
 
         if (healthChecker != null)
         {

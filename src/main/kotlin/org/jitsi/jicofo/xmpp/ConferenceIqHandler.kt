@@ -17,8 +17,7 @@
  */
 package org.jitsi.jicofo.xmpp
 
-import ai.saal.blync.service.ConferenceHostService
-import ai.saal.blync.service.ConferenceRoomService
+
 import ai.saal.blync.service.impl.ConferenceHostServiceImpl
 import ai.saal.blync.service.impl.ConferenceRoomServiceImpl
 import org.jitsi.jicofo.FocusManager
@@ -33,7 +32,6 @@ import org.jivesoftware.smack.iqrequest.AbstractIqRequestHandler
 import org.jivesoftware.smack.iqrequest.IQRequestHandler
 import org.jivesoftware.smack.packet.IQ
 import org.jivesoftware.smack.packet.XMPPError
-
 
 /**
  * Handles XMPP requests for a new conference ([ConferenceIq]).
@@ -69,7 +67,7 @@ class ConferenceIqHandler(
         var isPermitted = false
         val from = query.from.toString()
         if (!roomExists) {
-            val conferenceHostService: ConferenceHostService = ConferenceHostServiceImpl()
+            val conferenceHostService: ConferenceHostServiceImpl = ConferenceHostServiceImpl()
             isPermitted = conferenceHostService.validateHostPermission(room.toString(), from)
             logger.info("Blync manger return => $isPermitted")
         }
@@ -93,7 +91,7 @@ class ConferenceIqHandler(
 
         logger.info("Ready status for room $room - > $ready")
         if (ready && !roomExists) {
-            val conferenceRoomService: ConferenceRoomService = ConferenceRoomServiceImpl()
+            val conferenceRoomService: ConferenceRoomServiceImpl = ConferenceRoomServiceImpl()
             conferenceRoomService.updateRoomState(room.toString(), "STARTED")
         }
 

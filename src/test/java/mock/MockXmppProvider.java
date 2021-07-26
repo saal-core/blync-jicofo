@@ -22,16 +22,16 @@ import mock.xmpp.*;
 import org.jetbrains.annotations.*;
 import org.jitsi.impl.protocol.xmpp.*;
 import org.jitsi.jicofo.discovery.*;
-import org.jitsi.jicofo.jibri.*;
 import org.jitsi.jicofo.xmpp.*;
 import org.jitsi.protocol.xmpp.*;
-import org.jivesoftware.smack.*;
+import org.jivesoftware.smackx.disco.packet.*;
 import org.json.simple.*;
 import org.jxmpp.jid.*;
 import org.jxmpp.jid.impl.*;
 import org.jxmpp.stringprep.*;
 
 import java.util.*;
+import java.util.stream.*;
 
 /**
  *
@@ -41,6 +41,13 @@ public class MockXmppProvider
     extends AbstractXmppProvider
 {
     private final MockXmppConnection connection;
+
+    /**
+     * The features returned for any JID. We use default client features, but disable SCTP.
+     */
+    private final List<String> features
+            = DiscoveryUtil.getDefaultParticipantFeatureSet().stream()
+                .filter(f -> !f.equals(DiscoveryUtil.FEATURE_SCTP)).collect(Collectors.toList());
 
     private final AbstractOperationSetJingle jingleOpSet;
 
@@ -74,7 +81,7 @@ public class MockXmppProvider
     }
 
     @Override
-    public void stop()
+    public void shutdown()
     {
         if (jingleOpSet != null)
         {
@@ -92,7 +99,7 @@ public class MockXmppProvider
 
 
     @Override
-    public AbstractXMPPConnection getXmppConnection()
+    public MockXmppConnection getXmppConnection()
     {
         return connection;
     }
@@ -134,19 +141,14 @@ public class MockXmppProvider
     @Override
     public List<String> discoverFeatures(@NotNull EntityFullJid jid)
     {
-        return DiscoveryUtil.getDefaultParticipantFeatureSet();
+        return features;
     }
 
+    @Nullable
     @Override
-    public void addJibriIqHandler(@NotNull JibriSessionIqHandler jibriIqHandler)
+    public DiscoverInfo discoverInfo(@NotNull Jid jid)
     {
-        throw new RuntimeException("Not implemented.");
-    }
-
-    @Override
-    public void removeJibriIqHandler(@NotNull JibriSessionIqHandler jibriIqHandler)
-    {
-        throw new RuntimeException("Not implemented.");
+        return null;
     }
 
     @NotNull

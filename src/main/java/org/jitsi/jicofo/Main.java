@@ -17,7 +17,6 @@
  */
 package org.jitsi.jicofo;
 
-import ai.saal.blync.util.BlyncUrl;
 import kotlin.jvm.functions.*;
 import org.jetbrains.annotations.*;
 import org.jitsi.cmd.*;
@@ -79,7 +78,7 @@ public class Main
         }
 
         logger.info("Stopping services.");
-        jicofoServices.stop();
+        jicofoServices.shutdown();
         TaskPools.shutdown();
         JicofoServices.jicofoServicesSingleton = null;
     }
@@ -101,11 +100,8 @@ public class Main
         String componentDomain;
         // Try to get domain, can be null after this call(we'll fix that later)
         componentDomain = cmdLine.getOptionValue("domain");
-
-        System.out.println("#"+componentDomain);
         // Host name
         host = cmdLine.getOptionValue("--host", componentDomain == null ? "localhost" : componentDomain);
-        System.out.println('#'+host);
         // Try to fix component domain
         if (isBlank(componentDomain))
         {
@@ -128,13 +124,6 @@ public class Main
         String focusDomain = cmdLine.getOptionValue("--user_domain");
         String focusUserName = cmdLine.getOptionValue("--user_name");
         String focusPassword = cmdLine.getOptionValue("--user_password");
-
-        System.out.println("## CONFERENCE_MANAGER_URL => "+ cmdLine.getOptionValue("CONFERENCE_MANAGER_URL"));
-        String blyncUrl =  cmdLine.getOptionValue("CONFERENCE_MANAGER_URL");
-
-
-        BlyncUrl.setUrl(blyncUrl);
-
         if (isBlank(focusPassword))
         {
             focusPassword = System.getenv("JICOFO_AUTH_PASSWORD");
@@ -156,7 +145,7 @@ public class Main
 
     private static void setupMetaconfigLogger()
     {
-        Logger configLogger = new LoggerImpl("org.jitsi.config");
+        org.jitsi.utils.logging2.Logger configLogger = new org.jitsi.utils.logging2.LoggerImpl("org.jitsi.config");
         MetaconfigSettings.Companion.setLogger(new MetaconfigLogger()
         {
             @Override

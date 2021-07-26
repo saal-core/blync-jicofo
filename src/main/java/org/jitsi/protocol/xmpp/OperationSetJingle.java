@@ -44,8 +44,8 @@ public interface OperationSetJingle
      * @return {@code true} the client didn't come back with en error response.
      */
     boolean initiateSession(
-            JingleIQ jingleIQ,
-            JingleRequestHandler requestHandler)
+        JingleIQ jingleIQ,
+        JingleRequestHandler requestHandler)
         throws SmackException.NotConnectedException;
 
     Jid getOurJID();

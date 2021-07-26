@@ -110,7 +110,7 @@ public class JvbDoctor
         }
     }
 
-    synchronized public void stop()
+    synchronized public void shutdown()
     {
         // Remove scheduled tasks
         ArrayList<Jid> bridges = new ArrayList<>(tasks.keySet());
@@ -199,7 +199,7 @@ public class JvbDoctor
 
         /**
          * Performs a health check.
-         * @throws SmackException.NotConnectedException when XMPP is not connected,
+         * @throws org.jivesoftware.smack.SmackException.NotConnectedException when XMPP is not connected,
          * the task should terminate.
          */
         private void doHealthCheck()

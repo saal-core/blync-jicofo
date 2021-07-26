@@ -457,7 +457,7 @@ public abstract class AbstractAuthAuthority
 
         LogoutIq result = new LogoutIq();
 
-        result.setType(IQ.Type.result);
+        result.setType(org.jivesoftware.smack.packet.IQ.Type.result);
         result.setStanzaId(iq.getStanzaId());
         result.setFrom(iq.getTo());
         result.setTo(iq.getFrom());
@@ -493,7 +493,7 @@ public abstract class AbstractAuthAuthority
     /**
      * Stops this authentication authority instance.
      */
-    public void stop()
+    public void shutdown()
     {
         if (expireTimer != null)
         {

@@ -51,9 +51,9 @@ public class JibriSession
      * Returns <tt>true</tt> if given <tt>status</tt> indicates that Jibri is in
      * the middle of starting of the recording process.
      */
-    static private boolean isStartingStatus(Status status)
+    static private boolean isStartingStatus(JibriIq.Status status)
     {
-        return Status.PENDING.equals(status);
+        return JibriIq.Status.PENDING.equals(status);
     }
 
     /**
@@ -90,7 +90,7 @@ public class JibriSession
     /**
      * Current Jibri recording status.
      */
-    private Status jibriStatus = Status.UNDEFINED;
+    private JibriIq.Status jibriStatus = JibriIq.Status.UNDEFINED;
 
     private final Logger logger;
 
@@ -143,11 +143,6 @@ public class JibriSession
     private final String applicationData;
 
     /**
-     * {@link AbstractXMPPConnection} instance used to send/listen for XMPP packets.
-     */
-    private final AbstractXMPPConnection xmpp;
-
-    /**
      * The maximum amount of retries we'll attempt
      */
     private final int maxNumRetries;
@@ -176,8 +171,6 @@ public class JibriSession
      * @param roomName the name if the XMPP MUC room (full address).
      * @param pendingTimeout how many seconds this session can wait in pending
      * state, before trying another Jibri instance or failing with an error.
-     * @param connection the XMPP connection which will be used to send/listen
-     * for packets.
      * @param jibriDetector the Jibri detector which will be used to select
      * Jibri instance.
      * @param isSIP <tt>true</tt> if it's a SIP session or <tt>false</tt> for
@@ -198,7 +191,6 @@ public class JibriSession
             Jid initiator,
             long pendingTimeout,
             int maxNumRetries,
-            AbstractXMPPConnection connection,
             JibriDetector jibriDetector,
             boolean isSIP,
             String sipAddress,
@@ -222,7 +214,6 @@ public class JibriSession
         this.youTubeBroadcastId = youTubeBroadcastId;
         this.sessionId = sessionId;
         this.applicationData = applicationData;
-        this.xmpp = connection;
         jibriDetector.addHandler(jibriEventHandler);
         logger = new LoggerImpl(getClass().getName(), logLevelDelegate.getLevel());
     }
@@ -244,7 +235,7 @@ public class JibriSession
     }
 
     /**
-     * @return The {@link Type} of this session.
+     * @return The {@link JibriSession.Type} of this session.
      */
     public Type getJibriType()
     {
@@ -360,7 +351,7 @@ public class JibriSession
 
         stopRequest.setType(IQ.Type.set);
         stopRequest.setTo(currentJibriJid);
-        stopRequest.setAction(Action.STOP);
+        stopRequest.setAction(JibriIq.Action.STOP);
         stopRequest.setSessionId(this.sessionId);
 
         logger.info("Trying to stop: " + stopRequest.toXML());
@@ -370,7 +361,7 @@ public class JibriSession
         // in the processing of the response.
         try
         {
-            xmpp.sendIqWithResponseCallback(
+            jibriDetector.getXmppConnection().sendIqWithResponseCallback(
                     stopRequest,
                     stanza -> {
                         if (stanza instanceof JibriIq) {
@@ -394,7 +385,7 @@ public class JibriSession
                     60000);
         } catch (SmackException.NotConnectedException | InterruptedException e)
         {
-            logger.error("Error sending stop iq: " + e.toString());
+            logger.error("Error sending stop iq: " + e, e);
         }
     }
 
@@ -442,8 +433,8 @@ public class JibriSession
     private void processJibriIqFromJibri(JibriIq iq)
     {
         // We have something from Jibri - let's update recording status
-        Status status = iq.getStatus();
-        if (!Status.UNDEFINED.equals(status))
+        JibriIq.Status status = iq.getStatus();
+        if (!JibriIq.Status.UNDEFINED.equals(status))
         {
             logger.info("Updating status from JIBRI: " + iq.toXML() + " for " + roomName);
 
@@ -451,7 +442,7 @@ public class JibriSession
         }
         else
         {
-            logger.error("Received UNDEFINED status from jibri: " + iq.toString());
+            logger.error("Received UNDEFINED status from jibri: " + iq);
         }
     }
 
@@ -461,7 +452,7 @@ public class JibriSession
      * in the case that this isn't a recording session but actually a SIP
      * session)
      */
-    RecordingMode getRecordingMode()
+    JibriIq.RecordingMode getRecordingMode()
     {
         if (sipAddress != null)
         {
@@ -495,7 +486,7 @@ public class JibriSession
 
         startIq.setTo(jibriJid);
         startIq.setType(IQ.Type.set);
-        startIq.setAction(Action.START);
+        startIq.setAction(JibriIq.Action.START);
         startIq.setSessionId(this.sessionId);
         logger.debug(
             "Passing on jibri application data: " + this.applicationData);
@@ -523,7 +514,7 @@ public class JibriSession
         // timeout each time.
         reschedulePendingTimeout();
 
-        IQ reply = UtilKt.sendIqAndGetResponse(xmpp, startIq);
+        IQ reply = UtilKt.sendIqAndGetResponse(jibriDetector.getXmppConnection(), startIq);
 
         if (!(reply instanceof JibriIq))
         {
@@ -611,7 +602,7 @@ public class JibriSession
      */
     private void handleJibriStatusUpdate(
             @NotNull Jid jibriJid,
-            Status newStatus,
+            JibriIq.Status newStatus,
             @Nullable JibriIq.FailureReason failureReason,
             @Nullable Boolean shouldRetryParam)
     {
@@ -790,12 +781,12 @@ public class JibriSession
          * Called on {@link JibriSession} status update.
          * @param jibriSession which status has changed
          * @param newStatus the new status
-         * @param failureReason optional error for {@link Status#OFF}.
+         * @param failureReason optional error for {@link JibriIq.Status#OFF}.
          */
         void onSessionStateChanged(
                 JibriSession jibriSession,
-                Status newStatus,
-                FailureReason failureReason);
+                JibriIq.Status newStatus,
+                JibriIq.FailureReason failureReason);
     }
 
     static public abstract class StartException extends Exception

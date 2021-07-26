@@ -80,29 +80,29 @@ public class JigasiSelectorTest
 
         if (numberOfParticipants > -1)
         {
-            stats.addStat(new Stat(PARTICIPANTS, numberOfParticipants));
+            stats.addStat(new ColibriStatsExtension.Stat(PARTICIPANTS, numberOfParticipants));
         }
 
         if (region != null)
         {
-            stats.addStat(new Stat(REGION, region));
+            stats.addStat(new ColibriStatsExtension.Stat(REGION, region));
         }
 
         if (inGracefulShutdown != null)
         {
-            stats.addStat(new Stat(
+            stats.addStat(new ColibriStatsExtension.Stat(
                 SHUTDOWN_IN_PROGRESS,
                 inGracefulShutdown));
         }
 
         if (transcriber)
         {
-            stats.addStat(new Stat(SUPPORTS_TRANSCRIPTION, true));
+            stats.addStat(new ColibriStatsExtension.Stat(SUPPORTS_TRANSCRIPTION, true));
         }
 
         if (sip)
         {
-            stats.addStat(new Stat(SUPPORTS_SIP, true));
+            stats.addStat(new ColibriStatsExtension.Stat(SUPPORTS_SIP, true));
         }
 
         brewery.updateInstanceStats(jid, stats);

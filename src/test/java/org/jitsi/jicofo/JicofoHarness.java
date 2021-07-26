@@ -47,10 +47,13 @@ public class JicofoHarness
     private void init()
     {
         System.setProperty("org.jitsi.jicofo.PING_INTERVAL", "0");
-        // TODO replace with withLegacyConfig
         System.setProperty(XmppClientConnectionConfig.legacyXmppDomainPropertyName, "test.domain.net");
         System.setProperty(XmppClientConnectionConfig.legacyDomainPropertyName, "test.domain.net");
         System.setProperty(XmppClientConnectionConfig.legacyUsernamePropertyName, "focus");
+
+        // We don't want the jitsi-videobridge we load to try to use SCTP.
+        System.setProperty("videobridge.sctp.enabled", "false");
+
         JitsiConfig.Companion.reloadNewConfig();
 
         // Prevent jetty from starting.
@@ -73,12 +76,14 @@ public class JicofoHarness
     public void shutdown()
     {
         JicofoServices.jicofoServicesSingleton = null;
-        jicofoServices.stop();
+        jicofoServices.shutdown();
 
         System.clearProperty("org.jitsi.jicofo.PING_INTERVAL");
         System.clearProperty(XmppClientConnectionConfig.legacyXmppDomainPropertyName);
         System.clearProperty(XmppClientConnectionConfig.legacyDomainPropertyName);
         System.clearProperty(XmppClientConnectionConfig.legacyUsernamePropertyName);
+        System.clearProperty("videobridge.sctp.enabled");
+
         JitsiConfig.Companion.reloadNewConfig();
 
         MockMultiUserChatOpSet.cleanMucSharing();
