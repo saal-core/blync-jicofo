@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,10 +21,11 @@ import mock.*;
 import mock.jvb.*;
 import mock.util.*;
 
+import org.jitsi.impl.protocol.xmpp.colibri.*;
+import org.jitsi.jicofo.codec.*;
 import org.jitsi.xmpp.extensions.colibri.*;
 import org.jitsi.xmpp.extensions.jingle.*;
 
-import org.jitsi.jicofo.util.*;
 import org.jitsi.protocol.xmpp.colibri.*;
 
 import org.junit.*;
@@ -38,8 +39,6 @@ import java.util.*;
 import static org.junit.Assert.assertEquals;
 
 /**
- * FIXME: include into test suite(problems between OSGi restarts)
- *
  * Tests colibri tools used for channel management.
  *
  * @author Pawel Domas
@@ -47,74 +46,43 @@ import static org.junit.Assert.assertEquals;
 @RunWith(JUnit4.class)
 public class ColibriTest
 {
-    static OSGiHandler osgi = OSGiHandler.getInstance();
+    private final JicofoHarness harness = new JicofoHarness();
 
-    @BeforeClass
-    public static void setUpClass()
-        throws Exception
+    @After
+    public void tearDown()
     {
-        osgi.init();
-    }
-
-    @AfterClass
-    public static void tearDownClass()
-        throws Exception
-    {
-        osgi.shutdown();
+        harness.shutdown();
     }
 
     @Test
     public void testChannelAllocation()
         throws Exception
     {
-        EntityBareJid roomName = JidCreate.entityBareFrom(
-                "testroom@conference.pawel.jitsi.net");
-        String serverName = "test-server";
+        EntityBareJid roomName = JidCreate.entityBareFrom("testroom@conference.pawel.jitsi.net");
         JitsiMeetConfig config = new JitsiMeetConfig(new HashMap<>());
 
-        TestConference testConference
-            = TestConference.allocate(osgi.bc, serverName, roomName);
+        TestConference testConference = new TestConference(harness, roomName);
         MockVideobridge mockBridge = testConference.getMockVideoBridge();
+        ColibriConference colibriConf = new ColibriConferenceImpl(harness.getXmppProvider().getXmppConnection());
 
-        MockProtocolProvider pps
-            = testConference.getFocusProtocolProvider();
-
-        OperationSetColibriConference colibriTool
-            = pps.getOperationSet(OperationSetColibriConference.class);
-
-        ColibriConference colibriConf = colibriTool.createNewConference();
-
-        colibriConf.setConfig(config);
+        colibriConf.setName(JidCreate.entityBareFrom("foo@bar.com/zzz"));
 
         colibriConf.setJitsiVideobridge(mockBridge.getBridgeJid());
 
-        List<ContentPacketExtension> contents = new ArrayList<>();
+        OfferOptions offerOptions = new OfferOptions();
+        OfferOptionsKt.applyConstraints(offerOptions, config);
+        offerOptions.setRtx(false);
 
-        JingleOfferFactory jingleOfferFactory
-            = FocusBundleActivator.getJingleOfferFactory();
-        ContentPacketExtension audio
-            = jingleOfferFactory.createAudioContent(true, true, config);
-        ContentPacketExtension video
-            = jingleOfferFactory.createVideoContent(true, true, false, config);
-        ContentPacketExtension data
-            = jingleOfferFactory.createDataContent(true, true);
-
-        contents.add(audio);
-        contents.add(video);
-        contents.add(data);
+        List<ContentPacketExtension> contents = JingleOfferFactory.INSTANCE.createOffer(offerOptions);
 
         String peer1 = "endpoint1";
         String peer2 = "endpoint2";
 
-        ColibriConferenceIQ peer1Channels
-            = colibriConf.createColibriChannels(
-                peer1, null, true, contents);
+        ColibriConferenceIQ peer1Channels = colibriConf.createColibriChannels(peer1, null, true, contents);
 
         assertEquals(1, mockBridge.getEndpointCount());
 
-        ColibriConferenceIQ peer2Channels
-            = colibriConf.createColibriChannels(
-                peer2, null, true, contents);
+        ColibriConferenceIQ peer2Channels = colibriConf.createColibriChannels(peer2, null, true, contents);
 
         assertEquals(2, mockBridge.getEndpointCount());
 

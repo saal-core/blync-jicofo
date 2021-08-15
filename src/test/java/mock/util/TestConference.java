@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,19 +17,14 @@
  */
 package mock.util;
 
-import mock.*;
-
 import mock.jvb.*;
-import mock.muc.*;
 
+import mock.muc.*;
 import mock.xmpp.*;
 import org.jitsi.jicofo.*;
-import org.jitsi.osgi.*;
-
-import org.jitsi.nlj.*;
 import org.jxmpp.jid.*;
 import org.jxmpp.jid.impl.*;
-import org.osgi.framework.*;
+import org.jxmpp.stringprep.*;
 
 import java.util.*;
 
@@ -38,110 +33,68 @@ import java.util.*;
  */
 public class TestConference
 {
-    private final BundleContext bc;
-
-    private String serverName;
-
-    private EntityBareJid roomName;
-
-    private final OSGIServiceRef<JitsiMeetServices> meetServicesRef;
-
-    private Jid mockBridgeJid;
-
-    private final OSGIServiceRef<FocusManager> focusManagerRef;
-
-    private MockProtocolProvider focusProtocolProvider;
+    private static final String DEFAULT_SERVER_NAME = "test-server";
 
     public JitsiMeetConferenceImpl conference;
 
     private MockVideobridge mockBridge;
 
-    private MockMultiUserChat chat;
+    private final JicofoHarness harness;
 
-    static public TestConference allocate(
-        BundleContext ctx, String serverName, EntityBareJid roomName)
-        throws Exception
+    public TestConference(JicofoHarness harness, EntityBareJid roomName)
     {
-        TestConference newConf = new TestConference(ctx);
-
-        newConf.createJvbAndConference(serverName, roomName);
-
-        return newConf;
+        this(harness, roomName, DEFAULT_SERVER_NAME);
+    }
+    public TestConference(JicofoHarness harness, EntityBareJid roomName, String serverName)
+    {
+        this.harness = harness;
+        createJvbAndConference(serverName, roomName);
     }
 
-    static public TestConference allocate(
-        BundleContext ctx, String serverName, EntityBareJid roomName,
-        MockVideobridge mockBridge)
-        throws Exception
+    private FocusManager getFocusManager()
     {
-        TestConference newConf = new TestConference(ctx);
-
-        newConf.createConferenceRoom(serverName, roomName, mockBridge);
-
-        return newConf;
-    }
-
-    public TestConference(BundleContext osgi)
-    {
-        this.bc = osgi;
-        this.meetServicesRef
-            = new OSGIServiceRef<>(osgi, JitsiMeetServices.class);
-        this.focusManagerRef = new OSGIServiceRef<>(osgi, FocusManager.class);
+        return harness.jicofoServices.getFocusManager();
     }
 
     private void createJvbAndConference(String serverName, EntityBareJid roomName)
-        throws Exception
     {
-        this.mockBridgeJid = JidCreate.from("mockjvb." + serverName);
+        Jid bridgeJid;
+        try
+        {
+            bridgeJid = JidCreate.from("mockjvb." + serverName);
+        }
+        catch (XmppStringprepException e)
+        {
+            throw new RuntimeException(e);
+        }
 
-        MockVideobridge mockBridge
-            = new MockVideobridge(
-                    new MockXmppConnection(mockBridgeJid),
-                    mockBridgeJid);
+        mockBridge = new MockVideobridge(new MockXmppConnection(bridgeJid), bridgeJid);
+        mockBridge.start();
 
-        mockBridge.start(bc);
+        harness.jicofoServices.getBridgeSelector().addJvbAddress(bridgeJid);
 
-        meetServicesRef.get().getBridgeSelector().addJvbAddress(mockBridgeJid);
-
-        createConferenceRoom(serverName, roomName, mockBridge);
+        createConferenceRoom(roomName);
     }
 
     public void stop()
-        throws Exception
     {
-        mockBridge.stop(bc);
+        mockBridge.stop();
     }
 
-    private void createConferenceRoom(String serverName, EntityBareJid roomName,
-                                      MockVideobridge mockJvb)
-        throws Exception
+    private void createConferenceRoom(EntityBareJid roomName)
     {
-        this.serverName = serverName;
-        this.roomName = roomName;
-        this.mockBridge = mockJvb;
-        this.mockBridgeJid = mockJvb.getBridgeJid();
-
         HashMap<String,String> properties = new HashMap<>();
 
-        focusManagerRef.get().conferenceRequest(roomName, properties);
-
-        this.conference = focusManagerRef.get().getConference(roomName);
-
-        MockMultiUserChatOpSet mucOpSet
-            = getFocusProtocolProvider().getMockChatOpSet();
-
-        this.chat = (MockMultiUserChat) mucOpSet.findRoom(roomName.toString());
-    }
-
-    public MockProtocolProvider getFocusProtocolProvider()
-    {
-        if (focusProtocolProvider == null)
+        try
         {
-            focusProtocolProvider
-                = (MockProtocolProvider) focusManagerRef
-                        .get().getProtocolProvider();
+            getFocusManager().conferenceRequest(roomName, properties);
         }
-        return focusProtocolProvider;
+        catch (Exception e)
+        {
+            throw new RuntimeException(e);
+        }
+
+        this.conference = getFocusManager().getConference(roomName);
     }
 
     public MockVideobridge getMockVideoBridge()
@@ -149,49 +102,13 @@ public class TestConference
         return mockBridge;
     }
 
-    public void addParticipant(MockParticipant user)
-    {
-        user.join(chat);
-    }
-
-    public MockParticipant addParticipant()
-    {
-        MockParticipant newParticipant
-            = new MockParticipant(StringGenerator.nextRandomStr());
-
-        newParticipant.join(chat);
-
-        return newParticipant;
-    }
-
-    public ConferenceUtility getConferenceUtility()
-    {
-        return new ConferenceUtility(conference);
-    }
-
-    public long[] getSimulcastLayersSSRCs(Jid peerJid)
-    {
-        String conferenceId = conference.getJvbConferenceId();
-        String endpointId = peerJid.getResourceOrEmpty().toString();
-        List<RtpEncodingDesc> encodings
-            = mockBridge.getSimulcastEncodings(conferenceId, endpointId);
-
-        long[] ssrcs = new long[encodings.size()];
-        int idx = 0;
-        for (RtpEncodingDesc encoding: encodings)
-        {
-            ssrcs[idx++] = encoding.getPrimarySSRC();
-        }
-        return ssrcs;
-    }
-
     public int getParticipantCount()
     {
         return conference.getParticipantCount();
     }
 
-    public EntityBareJid getRoomName()
+    public MockChatRoom getChatRoom()
     {
-        return roomName;
+        return (MockChatRoom) conference.getChatRoom();
     }
 }

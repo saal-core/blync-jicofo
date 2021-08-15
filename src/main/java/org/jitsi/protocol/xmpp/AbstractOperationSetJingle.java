@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,16 +17,17 @@
  */
 package org.jitsi.protocol.xmpp;
 
-import net.java.sip.communicator.service.protocol.*;
-
-import org.jitsi.utils.logging.*;
+import org.jitsi.impl.protocol.xmpp.*;
+import org.jitsi.jicofo.xmpp.*;
+import org.jitsi.utils.logging2.*;
 import org.jitsi.xmpp.extensions.colibri.*;
 import org.jitsi.xmpp.extensions.jingle.*;
-import org.jitsi.xmpp.extensions.jitsimeet.*;
 import org.jitsi.protocol.xmpp.util.*;
 
+import org.jivesoftware.smack.*;
 import org.jivesoftware.smack.iqrequest.*;
 import org.jivesoftware.smack.packet.*;
+import org.json.simple.*;
 import org.jxmpp.jid.Jid;
 
 import java.util.*;
@@ -45,19 +46,23 @@ public abstract class AbstractOperationSetJingle
      * The {@code Logger} used by the class {@code AbstractOperationSetJingle}
      * and its instances to print debug-related information.
      */
-    private static final Logger logger
-        = Logger.getLogger(AbstractOperationSetJingle.class);
+    private static final Logger logger = new LoggerImpl(AbstractOperationSetJingle.class.getName());
+
+    private static final JingleStats stats = new JingleStats();
+
+    public static JSONObject getStats()
+    {
+        return stats.toJson();
+    }
 
     /**
      * The list of active Jingle sessions.
      */
-    protected final Map<String, JingleSession> sessions
-        = new ConcurrentHashMap<>();
+    protected final Map<String, JingleSession> sessions = new ConcurrentHashMap<>();
 
     protected AbstractOperationSetJingle()
     {
-        super(JingleIQ.ELEMENT_NAME, JingleIQ.NAMESPACE,
-              IQ.Type.set, Mode.sync);
+        super(JingleIQ.ELEMENT_NAME, JingleIQ.NAMESPACE, IQ.Type.set, Mode.sync);
     }
 
     @Override
@@ -82,14 +87,13 @@ public abstract class AbstractOperationSetJingle
      *
      * @return our JID
      */
-    protected abstract Jid getOurJID();
+    @Override
+    public Jid getOurJID()
+    {
+        return getConnection().getUser();
+    }
 
-    /**
-     * Returns {@link XmppConnection} implementation.
-     *
-     * @return {@link XmppConnection} implementation
-     */
-    protected abstract XmppConnection getConnection();
+    protected abstract AbstractXMPPConnection getConnection();
 
     /**
      * Finds Jingle session for given session identifier.
@@ -107,41 +111,16 @@ public abstract class AbstractOperationSetJingle
      * {@inheritDoc}
      */
     @Override
-    public JingleIQ createSessionInitiate(
-        Jid address, List<ContentPacketExtension> contents)
-    {
-        String sid = JingleIQ.generateSID();
-        JingleIQ jingleIQ = new JingleIQ(JingleAction.SESSION_INITIATE, sid);
-
-        jingleIQ.setTo(address);
-        jingleIQ.setFrom(getOurJID());
-        jingleIQ.setInitiator(getOurJID());
-        jingleIQ.setType(IQ.Type.set);
-
-        for (ContentPacketExtension content : contents)
-        {
-            jingleIQ.addContent(content);
-        }
-
-        return jingleIQ;
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public boolean initiateSession(
-        JingleIQ inviteIQ,
-        JingleRequestHandler requestHandler)
-        throws OperationFailedException
+    public boolean initiateSession(JingleIQ inviteIQ, JingleRequestHandler requestHandler)
+        throws SmackException.NotConnectedException
     {
         String sid = inviteIQ.getSID();
-        JingleSession session
-            = new JingleSession(sid, inviteIQ.getTo(), requestHandler);
+        JingleSession session = new JingleSession(sid, inviteIQ.getTo(), requestHandler);
 
         sessions.put(sid, session);
 
-        IQ reply = getConnection().sendPacketAndGetReply(inviteIQ);
+        IQ reply = UtilKt.sendIqAndGetResponse(getConnection(), inviteIQ);
+        stats.stanzaSent(inviteIQ.getAction());
 
         if (reply == null || IQ.Type.result.equals(reply.getType()))
         {
@@ -158,92 +137,11 @@ public abstract class AbstractOperationSetJingle
     }
 
     /**
-     * Creates Jingle 'session-initiate' IQ for given parameters.
-     *
-     * @param sessionId Jingle session ID
-     * @param useBundle <tt>true</tt> if bundled transport is being used or
-     * <tt>false</tt> otherwise
-     * @param address the XMPP address where the IQ will be sent to
-     * @param contents the list of Jingle contents which describes the actual
-     * offer
-     * @param startMuted an array where the first value stands for "start with
-     * audio muted" and the seconds one for "start video muted"
-     *
-     * @return New instance of <tt>JingleIQ</tt> filled up with the details
-     * provided as parameters.
-     */
-    private JingleIQ createInviteIQ(JingleAction                    action,
-                                    String                          sessionId,
-                                    boolean                         useBundle,
-                                    Jid                             address,
-                                    List<ContentPacketExtension>    contents,
-                                    boolean[]                       startMuted)
-    {
-        JingleIQ inviteIQ = new JingleIQ(action, sessionId);
-
-        inviteIQ.setTo(address);
-        inviteIQ.setFrom(getOurJID());
-        inviteIQ.setInitiator(getOurJID());
-        inviteIQ.setType(IQ.Type.set);
-
-        for(ContentPacketExtension content : contents)
-        {
-            inviteIQ.addContent(content);
-        }
-
-        if (useBundle)
-        {
-            GroupPacketExtension group
-                = GroupPacketExtension.createBundleGroup(contents);
-
-            inviteIQ.addExtension(group);
-        }
-
-        // FIXME Move this to a place where offer's contents are created or
-        // convert the array to a list of extra PacketExtensions
-        if(startMuted[0] || startMuted[1])
-        {
-            StartMutedPacketExtension startMutedExt
-                = new StartMutedPacketExtension();
-            startMutedExt.setAudioMute(startMuted[0]);
-            startMutedExt.setVideoMute(startMuted[1]);
-            inviteIQ.addExtension(startMutedExt);
-        }
-
-        return inviteIQ;
-    }
-
-    /**
      * {@inheritDoc}
      */
     @Override
-    public JingleIQ createTransportReplace(
-        JingleSession session, List<ContentPacketExtension> contents)
-    {
-        JingleIQ jingleIQ
-            = new JingleIQ(
-                JingleAction.TRANSPORT_REPLACE, session.getSessionID());
-        jingleIQ.setTo(session.getAddress());
-        jingleIQ.setFrom(getOurJID());
-        jingleIQ.setInitiator(getOurJID());
-        jingleIQ.setType(IQ.Type.set);
-
-        for (ContentPacketExtension content : contents)
-        {
-            jingleIQ.addContent(content);
-        }
-
-        return jingleIQ;
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public boolean replaceTransport(
-        JingleIQ jingleIQ,
-        JingleSession session)
-        throws OperationFailedException
+    public boolean replaceTransport(JingleIQ jingleIQ, JingleSession session)
+        throws SmackException.NotConnectedException
     {
         Jid address = session.getAddress();
 
@@ -255,7 +153,8 @@ public abstract class AbstractOperationSetJingle
                     "Session does not exist for: " + address);
         }
 
-        IQ reply = getConnection().sendPacketAndGetReply(jingleIQ);
+        IQ reply = UtilKt.sendIqAndGetResponse(getConnection(), jingleIQ);
+        stats.stanzaSent(jingleIQ.getAction());
 
         if (reply == null || IQ.Type.result.equals(reply.getType()))
         {
@@ -287,6 +186,7 @@ public abstract class AbstractOperationSetJingle
             return IQ.createErrorResponse(
                 iq, XMPPError.getBuilder(XMPPError.Condition.bad_request));
         }
+        stats.stanzaReceived(action);
 
         if (session == null)
         {
@@ -306,6 +206,9 @@ public abstract class AbstractOperationSetJingle
             break;
         case SESSION_INFO:
             error = requestHandler.onSessionInfo(session, iq);
+            break;
+        case SESSION_TERMINATE:
+            error = requestHandler.onSessionTerminate(session, iq);
             break;
         case TRANSPORT_ACCEPT:
             error = requestHandler.onTransportAccept(session, iq.getContentList());
@@ -354,27 +257,39 @@ public abstract class AbstractOperationSetJingle
                                 MediaSourceGroupMap ssrcGroupMap,
                                 JingleSession        session)
     {
-        JingleIQ addSourceIq
-            = new JingleIQ(JingleAction.SOURCEADD, session.getSessionID());
+        boolean onlyInjected =
+                ssrcs.getSourcesForMedia("video").isEmpty() &&
+                        ssrcs.getSourcesForMedia("audio").stream().allMatch(SourcePacketExtension::isInjected);
+        if (onlyInjected)
+        {
+            logger.debug("Suppressing source-add for injected SSRC.");
+            return;
+        }
 
+        JingleIQ addSourceIq = new JingleIQ(JingleAction.SOURCEADD, session.getSessionID());
         addSourceIq.setFrom(getOurJID());
         addSourceIq.setType(IQ.Type.set);
 
         for (String media : ssrcs.getMediaTypes())
         {
-            ContentPacketExtension content
-                = new ContentPacketExtension();
+            List<SourcePacketExtension> sources = ssrcs.getSourcesForMedia(media);
+
+            if (sources.size() == 0)
+            {
+                continue;
+            }
+
+            ContentPacketExtension content = new ContentPacketExtension();
 
             content.setName(media);
 
-            RtpDescriptionPacketExtension rtpDesc
-                = new RtpDescriptionPacketExtension();
+            RtpDescriptionPacketExtension rtpDesc = new RtpDescriptionPacketExtension();
 
             rtpDesc.setMedia(media);
 
             content.addChildExtension(rtpDesc);
 
-            for (SourcePacketExtension ssrc : ssrcs.getSourcesForMedia(media))
+            for (SourcePacketExtension ssrc : sources)
             {
                 try
                 {
@@ -435,12 +350,13 @@ public abstract class AbstractOperationSetJingle
 
         addSourceIq.setTo(session.getAddress());
 
-        logger.info(
+        logger.debug(
             "Notify add SSRC " + session.getAddress()
                 + " SID: " + session.getSessionID() + " "
                 + ssrcs + " " + ssrcGroupMap);
 
-        getConnection().sendStanza(addSourceIq);
+        UtilKt.tryToSendStanza(getConnection(), addSourceIq);
+        stats.stanzaSent(JingleAction.SOURCEADD);
     }
 
     /**
@@ -456,10 +372,18 @@ public abstract class AbstractOperationSetJingle
     @Override
     public void sendRemoveSourceIQ(MediaSourceMap ssrcs,
                                    MediaSourceGroupMap ssrcGroupMap,
-                                   JingleSession        session)
+                                   JingleSession session)
     {
-        JingleIQ removeSourceIq = new JingleIQ(JingleAction.SOURCEREMOVE,
-                session.getSessionID());
+        boolean onlyInjected =
+                ssrcs.getSourcesForMedia("video").isEmpty() &&
+                        ssrcs.getSourcesForMedia("audio").stream().allMatch(SourcePacketExtension::isInjected);
+        if (onlyInjected)
+        {
+            logger.debug("Suppressing source-remove for injected SSRC.");
+            return;
+        }
+
+        JingleIQ removeSourceIq = new JingleIQ(JingleAction.SOURCEREMOVE, session.getSessionID());
 
         removeSourceIq.setFrom(getOurJID());
         removeSourceIq.setType(IQ.Type.set);
@@ -538,12 +462,13 @@ public abstract class AbstractOperationSetJingle
 
         removeSourceIq.setTo(session.getAddress());
 
-        logger.info(
+        logger.debug(
             "Notify remove SSRC " + session.getAddress()
                 + " SID: " + session.getSessionID() + " "
                 + ssrcs + " " + ssrcGroupMap);
 
-        getConnection().sendStanza(removeSourceIq);
+        UtilKt.tryToSendStanza(getConnection(), removeSourceIq);
+        stats.stanzaSent(JingleAction.SOURCEREMOVE);
     }
 
     /**
@@ -558,39 +483,48 @@ public abstract class AbstractOperationSetJingle
         {
             if (session.getRequestHandler() == requestHandler)
             {
-                terminateSession(session, Reason.GONE, null);
+                terminateSession(session, Reason.GONE, null, true);
             }
         }
     }
 
     /**
-     * Terminates given Jingle session by sending 'session-terminate' with some
-     * {@link Reason} if provided.
+     * Terminates given Jingle session. This method is to be called either to send 'session-terminate' or to inform
+     * this operation set that the session has been terminated as a result of 'session-terminate' received from
+     * the other peer in which case {@code sendTerminate} should be set to {@code false}.
      *
      * @param session the <tt>JingleSession</tt> to terminate.
      * @param reason one of {@link Reason} enum that indicates why the session
      *               is being ended or <tt>null</tt> to omit.
+     * @param sendTerminate when {@code true} it means that a 'session-terminate' is to be sent, otherwise it means
+     * the session is being ended on the remote peer's request.
      * {@inheritDoc}
      */
     @Override
     public void terminateSession(JingleSession    session,
                                  Reason           reason,
-                                 String           message)
+                                 String           message,
+                                 boolean          sendTerminate)
     {
-        logger.info("Terminate session: " + session.getAddress());
+        logger.info(String.format(
+                "Terminate session: %s, reason: %s, send terminate: %s",
+                session.getAddress(),
+                reason,
+                sendTerminate));
 
-        // we do not send session-terminate as muc addresses are invalid at this
-        // point
-        // FIXME: but there is also connection address available
-        JingleIQ terminate
-            = JinglePacketFactory.createSessionTerminate(
+        if (sendTerminate)
+        {
+            JingleIQ terminate
+                    = JinglePacketFactory.createSessionTerminate(
                     getOurJID(),
                     session.getAddress(),
                     session.getSessionID(),
                     reason,
                     message);
 
-        getConnection().sendStanza(terminate);
+            UtilKt.tryToSendStanza(getConnection(), terminate);
+            stats.stanzaSent(JingleAction.SESSION_TERMINATE);
+        }
 
         sessions.remove(session.getSessionID());
     }

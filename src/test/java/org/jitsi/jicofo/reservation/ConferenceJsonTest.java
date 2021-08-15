@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -108,8 +108,7 @@ public class ConferenceJsonTest
         Map<String, Object> objects = conf.createJSonMap();
 
         assertEquals("test1" ,objects.get(ConferenceJsonHandler.CONF_NAME_KEY));
-        assertEquals("pawel.gawel", objects.get(ConferenceJsonHandler
-                .CONF_OWNER_KEY));
+        assertEquals("pawel.gawel", objects.get(ConferenceJsonHandler.CONF_OWNER_KEY));
 
         // FIXME: This will fail in different time zone
         //assertEquals(

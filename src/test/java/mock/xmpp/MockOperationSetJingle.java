@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,55 +20,32 @@ package mock.xmpp;
 import mock.*;
 import org.jitsi.impl.protocol.xmpp.*;
 import org.jitsi.protocol.xmpp.*;
-import org.jitsi.utils.logging.*;
-import org.jxmpp.jid.*;
+import org.jivesoftware.smack.*;
 
 import java.util.*;
 
 /**
  * Implementation of {@link MockOperationSetJingle} for
- * {@link XmppProtocolProvider}.
+ * {@link XmppProviderImpl}.
  *
  * @author Pawel Domas
  */
 public class MockOperationSetJingle
     extends AbstractOperationSetJingle
 {
-    /**
-     * The logger used by this class.
-     */
-    private final static Logger logger
-            = Logger.getLogger(MockOperationSetJingle.class);
+    private final MockXmppProvider xmppProvider;
 
-    /**
-     * Parent {@link XmppProtocolProvider}.
-     */
-    private final MockProtocolProvider xmppProvider;
-
-    /**
-     * Creates new instance of <tt>OperationSetJingleImpl</tt>.
-     *
-     * @param xmppProvider parent XMPP protocol provider
-     */
-    public MockOperationSetJingle(MockProtocolProvider xmppProvider)
+    public MockOperationSetJingle(MockXmppProvider xmppProvider)
     {
         Objects.requireNonNull(xmppProvider);
         this.xmppProvider = xmppProvider;
     }
 
     /**
-     * Returns our XMPP address that will be used as 'from' attribute
-     * in Jingle QIs.
-     */
-    protected EntityFullJid getOurJID()
-    {
-        return getConnection().getUser();
-    }
-
-    /**
      * {@inheritDoc}
      */
-    protected XmppConnection getConnection()
+    @Override
+    protected AbstractXMPPConnection getConnection()
     {
         return xmppProvider.getXmppConnection();
     }

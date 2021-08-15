@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,9 +22,6 @@ import mock.muc.*;
 
 import mock.util.*;
 import org.jitsi.xmpp.extensions.jingle.*;
-import org.jitsi.xmpp.extensions.jitsimeet.*;
-
-import org.jitsi.utils.logging.*;
 
 import org.junit.*;
 import org.junit.runner.*;
@@ -36,32 +33,15 @@ import java.util.*;
 
 import static org.junit.Assert.*;
 
-
-/**
- *
- */
 @RunWith(JUnit4.class)
 public class BundleTest
 {
-    /**
-     * The logger
-     */
-    private final static Logger logger = Logger.getLogger(BundleTest.class);
+    private final JicofoHarness harness = new JicofoHarness();
 
-    static OSGiHandler osgi = OSGiHandler.getInstance();
-
-    @BeforeClass
-    public static void setUpClass()
-        throws Exception
+    @After
+    public void tearDown()
     {
-        osgi.init();
-    }
-
-    @AfterClass
-    public static void tearDownClass()
-        throws Exception
-    {
-        osgi.shutdown();
+        harness.shutdown();
     }
 
     /**
@@ -71,28 +51,17 @@ public class BundleTest
     public void testBundle()
         throws Exception
     {
-        EntityBareJid roomName = JidCreate.entityBareFrom(
-                "testroom@conference.pawel.jitsi.net");
-        String serverName = "test-server";
-
-        TestConference testConference
-            = TestConference.allocate(osgi.bc, serverName, roomName);
-
-        MockProtocolProvider pps
-            = testConference.getFocusProtocolProvider();
-
-        MockMultiUserChatOpSet mucOpSet = pps.getMockChatOpSet();
-
-        MockMultiUserChat chat
-            = (MockMultiUserChat) mucOpSet.findRoom(roomName.toString());
+        EntityBareJid roomName = JidCreate.entityBareFrom("testroom@conference.pawel.jitsi.net");
+        TestConference testConference = new TestConference(harness, roomName);
+        MockChatRoom chatRoom = testConference.getChatRoom();
 
         MockParticipant user1 = new MockParticipant("user1");
 
-        user1.join(chat);
+        user1.join(chatRoom);
 
         MockParticipant user2 = new MockParticipant("user2");
 
-        user2.join(chat);
+        user2.join(chatRoom);
 
         JingleIQ user1Invite = user1.acceptInvite(6000)[0];
 
@@ -165,12 +134,10 @@ public class BundleTest
             return;
 
         IceUdpTransportPacketExtension firstTransport
-            = firstContent.getFirstChildOfType(
-                    IceUdpTransportPacketExtension.class);
+            = firstContent.getFirstChildOfType(IceUdpTransportPacketExtension.class);
 
         IceUdpTransportPacketExtension transport
-            = content.getFirstChildOfType(
-                    IceUdpTransportPacketExtension.class);
+            = content.getFirstChildOfType(IceUdpTransportPacketExtension.class);
 
         assertTransportTheSame(firstTransport, transport);
     }
@@ -243,10 +210,7 @@ public class BundleTest
     static void validateBundleGroup(JingleIQ sessionInit)
     {
         GroupPacketExtension group
-            = (GroupPacketExtension)
-                    sessionInit.getExtension(
-                            GroupPacketExtension.ELEMENT_NAME,
-                            GroupPacketExtension.NAMESPACE);
+            = sessionInit.getExtension(GroupPacketExtension.ELEMENT_NAME, GroupPacketExtension.NAMESPACE);
 
         assertNotNull("No group extension in session init", group);
 

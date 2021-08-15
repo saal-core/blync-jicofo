@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,16 +17,21 @@
  */
 package org.jitsi.jicofo;
 
+import org.jetbrains.annotations.*;
+import org.jitsi.impl.protocol.xmpp.*;
 import org.jitsi.xmpp.extensions.colibri.*;
 import org.jitsi.xmpp.extensions.jingle.*;
 
 import org.jitsi.jicofo.discovery.*;
 import org.jitsi.protocol.xmpp.*;
 import org.jitsi.protocol.xmpp.util.*;
-import org.jitsi.utils.logging.*;
+import org.jitsi.utils.logging2.*;
 import org.jxmpp.jid.*;
 
+import java.time.*;
 import java.util.*;
+
+import static java.time.temporal.ChronoUnit.SECONDS;
 
 /**
  * Class represent Jitsi Meet conference participant. Stores information about
@@ -39,13 +44,6 @@ public class Participant
     extends AbstractParticipant
 {
     /**
-     * The class logger which can be used to override logging level inherited
-     * from {@link JitsiMeetConference}.
-     */
-    private final static Logger classLogger
-        = Logger.getLogger(Participant.class);
-
-    /**
      * Returns the endpoint ID for a participant in the videobridge (Colibri)
      * context. This method can be used before <tt>Participant</tt> instance is
      * created for the <tt>ChatRoomMember</tt>.
@@ -53,7 +51,7 @@ public class Participant
      * @param chatRoomMember XMPP MUC chat room member which represents a
      *                       <tt>Participant</tt>.
      */
-    public static String getEndpointId(XmppChatMember chatRoomMember)
+    public static String getEndpointId(ChatRoomMember chatRoomMember)
     {
         return chatRoomMember.getName(); // XMPP MUC Nickname
     }
@@ -67,20 +65,26 @@ public class Participant
     private JitsiMeetConferenceImpl.BridgeSession bridgeSession;
 
     /**
+     * The {@link Clock} used by this participant.
+     */
+    private Clock clock = Clock.systemUTC();
+
+    /**
+     * The list stored the timestamp when the last restart requests have been received for this participant and is used
+     * for rate limiting. See {@link #incrementAndCheckRestartRequests()} for more details.
+     */
+    private final Deque<Instant> restartRequests = new LinkedList<>();
+
+    /**
      * MUC chat member of this participant.
      */
-    private final XmppChatMember roomMember;
+    private final ChatRoomMember roomMember;
 
     /**
      * Jingle session (if any) established with this peer.
      */
     private JingleSession jingleSession;
 
-    /**
-     * The logger for this instance. Uses the logging level either of the
-     * {@link #classLogger} or {@link JitsiMeetConference#getLogger()}
-     * whichever is higher.
-     */
     private final Logger logger;
 
     /**
@@ -94,34 +98,17 @@ public class Participant
     private List<String> supportedFeatures = new ArrayList<>();
 
     /**
-     * Remembers participant's muted status.
-     */
-    private boolean mutedStatus;
-
-    /**
-     * Participant's display name.
-     */
-    private String displayName = null;
-
-    /**
      * Creates new {@link Participant} for given chat room member.
      *
-     * @param roomMember the {@link XmppChatMember} that represent this
+     * @param roomMember the {@link ChatRoomMember} that represent this
      *                   participant in MUC conference room.
-     *
-     * @param maxSourceCount how many unique sources per media this participant
-     *                     instance will be allowed to advertise.
      */
-    public Participant(JitsiMeetConference    conference,
-                       XmppChatMember         roomMember,
-                       int maxSourceCount)
+    public Participant(@NotNull ChatRoomMember roomMember, Logger parentLogger)
     {
-        super(conference.getLogger());
-        Objects.requireNonNull(conference, "conference");
+        super(parentLogger);
 
-        this.roomMember = Objects.requireNonNull(roomMember, "roomMember");
-        this.maxSourceCount = maxSourceCount;
-        this.logger = Logger.getLogger(classLogger, conference.getLogger());
+        this.roomMember = roomMember;
+        this.logger = parentLogger.createChildLogger(getClass().getName());
     }
 
     /**
@@ -153,6 +140,15 @@ public class Participant
     }
 
     /**
+     * Sets the new clock instance to be used by this participant. Meant for testing.
+     * @param newClock - the new {@link Clock}
+     */
+    public void setClock(Clock newClock)
+    {
+        this.clock = newClock;
+    }
+
+    /**
      * Sets {@link JingleSession} established with this peer.
      * @param jingleSession the new Jingle session to be assigned to this peer.
      */
@@ -162,12 +158,20 @@ public class Participant
     }
 
     /**
-     * Returns {@link XmppChatMember} that represents this participant in
+     * Returns {@link ChatRoomMember} that represents this participant in
      * conference multi-user chat room.
      */
-    public XmppChatMember getChatMember()
+    public ChatRoomMember getChatMember()
     {
         return roomMember;
+    }
+
+    /**
+     * @return {@link Clock} used by this participant instance.
+     */
+    public Clock getClock()
+    {
+        return clock;
     }
 
     /**
@@ -198,11 +202,73 @@ public class Participant
     }
 
     /**
+     * Returns {@code true} iff this participant supports REMB.
+     */
+    public boolean hasRembSupport()
+    {
+        return supportedFeatures.contains(DiscoveryUtil.FEATURE_REMB);
+    }
+
+    /**
+     * Returns {@code true} iff this participant supports TCC.
+     */
+    public boolean hasTccSupport()
+    {
+        return supportedFeatures.contains(DiscoveryUtil.FEATURE_TCC);
+    }
+
+    /**
      * Returns {@code true} iff this participant supports RTX.
      */
     public boolean hasRtxSupport()
     {
         return supportedFeatures.contains(DiscoveryUtil.FEATURE_RTX);
+    }
+
+    /**
+     * Returns {@code true} iff this participant supports RED for opus.
+     */
+    public boolean hasOpusRedSupport()
+    {
+        return supportedFeatures.contains(DiscoveryUtil.FEATURE_OPUS_RED);
+    }
+
+    /**
+     * Rate limiting mechanism for session restart requests received from participants.
+     * The rules ar as follows:
+     * - must be at least 10 second gap between the requests
+     * - no more than 3 requests within the last minute
+     *
+     * @return {@code true} if it's okay to process the request, as in it doesn't violate the current rate limiting
+     * policy, or {@code false} if the request should be denied.
+     */
+    public boolean incrementAndCheckRestartRequests()
+    {
+        final Instant now = Instant.now(clock);
+        Instant previousRequest = this.restartRequests.peekLast();
+
+        if (previousRequest == null)
+        {
+            this.restartRequests.add(now);
+
+            return true;
+        }
+
+        if (previousRequest.until(now, SECONDS) < 10)
+        {
+            return false;
+        }
+
+        // Allow only 3 requests within the last minute
+        this.restartRequests.removeIf(requestTime -> requestTime.until(now, SECONDS) > 60);
+        if (this.restartRequests.size() > 2)
+        {
+            return false;
+        }
+
+        this.restartRequests.add(now);
+
+        return true;
     }
 
     /**
@@ -271,42 +337,13 @@ public class Participant
      * @see DiscoveryUtil for the list of predefined feature constants.
      * @param supportedFeatures the list of features to set.
      */
-    public void setSupportedFeatures(List<String> supportedFeatures)
+    public void setSupportedFeatures(@NotNull List<String> supportedFeatures)
         throws UnsupportedFeatureConfigurationException
     {
-        this.supportedFeatures
-            = Objects.requireNonNull(supportedFeatures, "supportedFeatures");
+        this.supportedFeatures = supportedFeatures;
         if (!hasBundleSupport()) {
             throw new UnsupportedFeatureConfigurationException("Participant doesn't support bundle, which is required");
         }
-    }
-
-    /**
-     * Sets muted status of this participant.
-     * @param mutedStatus new muted status to set.
-     */
-    public void setMuted(boolean mutedStatus)
-    {
-        this.mutedStatus = mutedStatus;
-    }
-
-    /**
-     * Returns <tt>true</tt> if this participant is muted or <tt>false</tt>
-     * otherwise.
-     */
-    public boolean isMuted()
-    {
-        return mutedStatus;
-    }
-
-    /**
-     * Return a <tt>Boolean</tt> which informs about this participant's video
-     * muted status. The <tt>null</tt> value stands for 'unknown'/not signalled,
-     * <tt>true</tt> for muted and <tt>false</tt> means unmuted.
-     */
-    public Boolean isVideoMuted()
-    {
-        return roomMember.hasVideoMuted();
     }
 
     /**
@@ -336,9 +373,7 @@ public class Participant
         }
         if (transport == null)
         {
-            logger.error(
-                "No valid transport supplied in transport-update from "
-                    + getChatMember().getContactAddress());
+            logger.error( "No valid transport supplied in transport-update from " + getChatMember().getName());
             return;
         }
 
@@ -353,8 +388,7 @@ public class Participant
         }
         else
         {
-            TransportSignaling.mergeTransportExtension(
-                    bundleTransport, transport);
+            TransportSignaling.mergeTransportExtension(bundleTransport, transport);
         }
     }
 
@@ -398,30 +432,12 @@ public class Participant
     }
 
     /**
-     * Returns the display name of the participant.
-     * @return the display name of the participant.
-     */
-    public String getDisplayName()
-    {
-        return displayName;
-    }
-
-    /**
      * Returns the stats ID of the participant.
      * @return the stats ID of the participant.
      */
     public String getStatId()
     {
         return roomMember.getStatsId();
-    }
-
-    /**
-     * Sets the display name of the participant.
-     * @param displayName the display name to set.
-     */
-    public void setDisplayName(String displayName)
-    {
-        this.displayName = displayName;
     }
 
     /**

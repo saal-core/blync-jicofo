@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,14 +20,14 @@ package org.jitsi.jicofo;
 import org.jitsi.xmpp.extensions.colibri.*;
 import org.jitsi.xmpp.extensions.jingle.*;
 import org.jitsi.xmpp.extensions.jitsimeet.*;
-import net.java.sip.communicator.service.protocol.*;
 
 import org.jitsi.protocol.xmpp.*;
 import org.jitsi.protocol.xmpp.util.*;
-import org.jitsi.utils.*;
-import org.jitsi.utils.logging.*;
+import org.jitsi.utils.logging2.*;
+import org.jivesoftware.smack.*;
 import org.jxmpp.jid.*;
 
+import javax.validation.constraints.*;
 import java.util.*;
 
 /**
@@ -66,13 +66,6 @@ import java.util.*;
 public class LipSyncHack implements OperationSetJingle
 {
     /**
-     * The class logger which can be used to override logging level inherited
-     * from {@link JitsiMeetConference}.
-     */
-    static private final Logger classLogger
-        = Logger.getLogger(LipSyncHack.class);
-
-    /**
      * Parent conference for which this instance is doing stream merging.
      */
     private final JitsiMeetConference conference;
@@ -82,11 +75,6 @@ public class LipSyncHack implements OperationSetJingle
      */
     private final OperationSetJingle jingleImpl;
 
-    /**
-     * The logger for this instance. Uses the logging level either of the
-     * {@link #classLogger} or {@link JitsiMeetConference#getLogger()}
-     * whichever is higher.
-     */
     private final Logger logger;
 
     /**
@@ -97,13 +85,14 @@ public class LipSyncHack implements OperationSetJingle
      * @param jingleImpl the Jingle operations set that will be wrapped in order
      *        to modify some of the Jingle requests.
      */
-    public LipSyncHack(JitsiMeetConference    conference,
-                       OperationSetJingle     jingleImpl)
+    public LipSyncHack(
+            @NotNull JitsiMeetConference conference,
+            @NotNull OperationSetJingle jingleImpl,
+            @NotNull Logger parentLogger)
     {
-        this.conference = Objects.requireNonNull(conference, "conference");
-        this.jingleImpl = Objects.requireNonNull(jingleImpl, "jingleImpl");
-
-        this.logger = Logger.getLogger(classLogger, conference.getLogger());
+        this.conference = conference;
+        this.jingleImpl = jingleImpl;
+        this.logger = parentLogger.createChildLogger(getClass().getName());
     }
 
     private MediaSourceMap getParticipantSSRCMap(Jid mucJid)
@@ -133,24 +122,20 @@ public class LipSyncHack implements OperationSetJingle
     private boolean isOkToMergeParticipantAV(Jid participantJid,
                                              Jid ownerJid)
     {
-        Participant participant
-            = conference.findParticipantForRoomJid(participantJid);
+        Participant participant = conference.findParticipantForRoomJid(participantJid);
         if (participant == null)
         {
             logger.error("No target participant found for: " + participantJid);
             return false;
         }
 
-        Participant streamsOwner
-            = conference.findParticipantForRoomJid(ownerJid);
+        Participant streamsOwner = conference.findParticipantForRoomJid(ownerJid);
         if (streamsOwner == null)
         {
             // Do not log that error for the JVB
             if (!SSRCSignaling.SSRC_OWNER_JVB.equals(ownerJid))
             {
-                logger.error(
-                    "Stream owner not a participant or not found for jid: "
-                        + ownerJid);
+                logger.error("Stream owner not a participant or not found for jid: " + ownerJid);
             }
             return false;
         }
@@ -175,6 +160,7 @@ public class LipSyncHack implements OperationSetJingle
         boolean merged = false;
         if (isOkToMergeParticipantAV(participant, owner))
         {
+            logger.info("Enabling lip-sync for " + participant.toString());
             merged = SSRCSignaling.mergeVideoIntoAudio(ssrcs);
         }
 
@@ -246,11 +232,17 @@ public class LipSyncHack implements OperationSetJingle
     public boolean initiateSession(
         JingleIQ jingleIQ,
         JingleRequestHandler requestHandler)
-        throws OperationFailedException
+        throws SmackException.NotConnectedException
     {
         processAllParticipantsSSRCs(jingleIQ.getContentList(), jingleIQ.getTo());
 
         return jingleImpl.initiateSession(jingleIQ, requestHandler);
+    }
+
+    @Override
+    public Jid getOurJID()
+    {
+        return jingleImpl.getOurJID();
     }
 
     /**
@@ -261,35 +253,13 @@ public class LipSyncHack implements OperationSetJingle
      */
     @Override
     public boolean replaceTransport(JingleIQ jingleIQ, JingleSession session)
-        throws OperationFailedException
+        throws SmackException.NotConnectedException
     {
         processAllParticipantsSSRCs(
             jingleIQ.getContentList(),
             session.getAddress());
 
         return jingleImpl.replaceTransport(jingleIQ, session);
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public JingleIQ createTransportReplace(
-        JingleSession session,
-        List<ContentPacketExtension> contents)
-    {
-        return jingleImpl.createTransportReplace(session, contents);
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public JingleIQ createSessionInitiate(
-        Jid address,
-        List<ContentPacketExtension> contents)
-    {
-        return jingleImpl.createSessionInitiate(address, contents);
     }
 
     /**
@@ -366,9 +336,10 @@ public class LipSyncHack implements OperationSetJingle
     @Override
     public void terminateSession(JingleSession    session,
                                  Reason           reason,
-                                 String           msg)
+                                 String           msg,
+                                 boolean          sendTerminate)
     {
-        jingleImpl.terminateSession(session, reason, msg);
+        jingleImpl.terminateSession(session, reason, msg, sendTerminate);
     }
 
     /**

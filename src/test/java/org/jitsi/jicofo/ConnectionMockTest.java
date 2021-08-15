@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 package org.jitsi.jicofo;
 
 import mock.xmpp.*;
+import org.jitsi.jicofo.xmpp.*;
 import org.jitsi.xmpp.extensions.jingle.*;
 import org.jivesoftware.smack.packet.*;
 import org.junit.*;
@@ -60,9 +61,9 @@ public class ConnectionMockTest
     public void testXmpConnectionIqGet()
             throws InterruptedException, XmppStringprepException
     {
-        peerA.getConnection().sendStanza(getIq("B"));
-        peerA.getConnection().sendStanza(getIq("C"));
-        peerB.getConnection().sendStanza(getIq("A"));
+        UtilKt.tryToSendStanza(peerA.getConnection(), getIq("B"));
+        UtilKt.tryToSendStanza(peerA.getConnection(), getIq("C"));
+        UtilKt.tryToSendStanza(peerB.getConnection(), getIq("A"));
 
         Thread.sleep(500);
 

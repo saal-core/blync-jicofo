@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,8 +21,6 @@ import mock.*;
 import mock.muc.*;
 import mock.util.*;
 
-import net.java.sip.communicator.service.protocol.*;
-
 import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
@@ -38,51 +36,29 @@ import static org.junit.Assert.assertTrue;
 @RunWith(JUnit4.class)
 public class RolesTest
 {
-    static OSGiHandler osgi = OSGiHandler.getInstance();
+    private final JicofoHarness harness = new JicofoHarness();
 
-    @BeforeClass
-    public static void setUpClass()
-        throws Exception
+    @After
+    public void tearDown()
     {
-        osgi.init();
+        harness.shutdown();
     }
 
-    @AfterClass
-    public static void tearDownClass()
-        throws Exception
-    {
-        osgi.shutdown();
-    }
-
-    /**
-     * Allocates Colibri channels in bundle
-     */
     @Test
     public void testPassModeratorRole()
         throws Exception
     {
-        EntityBareJid roomName = JidCreate.entityBareFrom(
-                "testroom@conference.pawel.jitsi.net");
-        String serverName = "test-server";
-
-        TestConference testConference
-            = TestConference.allocate(osgi.bc, serverName, roomName);
-
-        MockProtocolProvider pps
-            = testConference.getFocusProtocolProvider();
-
-        MockMultiUserChatOpSet mucOpSet = pps.getMockChatOpSet();
-
-        MockMultiUserChat chat
-            = (MockMultiUserChat) mucOpSet.findRoom(roomName.toString());
+        EntityBareJid roomName = JidCreate.entityBareFrom("testroom@conference.pawel.jitsi.net");
+        TestConference testConference = new TestConference(harness, roomName);
+        MockChatRoom chatRoom = testConference.getChatRoom();
 
         // Join with all users
-        MockParticipant users[] = new MockParticipant[4];
+        MockParticipant[] users = new MockParticipant[4];
         for (int i=0; i < users.length; i++)
         {
             users[i] = new MockParticipant("User" + i);
 
-            users[i].join(chat);
+            users[i].join(chatRoom);
         }
         // Accept invite with all users
         for (MockParticipant user : users)
@@ -94,10 +70,8 @@ public class RolesTest
         {
             // FIXME: wait for role change otherwise we might randomly fail here
             assertTrue(
-                i + " user should have moderator role("
-                    + users[i].getNickname() + ")",
-                ChatRoomMemberRole.MODERATOR.compareTo(
-                    users[i].getChatMember().getRole()) >= 0);
+                i + " user should have moderator role(" + users[i].getNickname() + ")",
+                users[i].getChatMember().getRole().hasModeratorRights());
 
             users[i].leave();
         }

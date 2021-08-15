@@ -1,5 +1,5 @@
 /*
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -91,7 +91,7 @@ public class CurrentVersionImpl
     public static final String NIGHTLY_BUILD_ID
         = parsedBuildId != null ? parsedBuildId : "build.git";
 
-    static final Version VERSION
+    public static final Version VERSION
         = new VersionImpl(
                 "JiCoFo",
                 VERSION_MAJOR,

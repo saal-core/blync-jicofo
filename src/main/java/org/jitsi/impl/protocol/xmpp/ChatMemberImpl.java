@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,13 +17,9 @@
  */
 package org.jitsi.impl.protocol.xmpp;
 
-import net.java.sip.communicator.impl.protocol.jabber.*;
-import org.jitsi.utils.logging.*;
+import org.jitsi.jicofo.xmpp.muc.*;
+import org.jitsi.utils.logging2.*;
 import org.jitsi.xmpp.extensions.jitsimeet.*;
-import net.java.sip.communicator.service.protocol.*;
-import net.java.sip.communicator.service.protocol.globalstatus.*;
-
-import org.jitsi.protocol.xmpp.*;
 
 import org.jivesoftware.smack.packet.*;
 import org.jivesoftware.smackx.muc.*;
@@ -36,12 +32,12 @@ import org.jxmpp.jid.parts.*;
  * @author Pawel Domas
  */
 public class ChatMemberImpl
-    implements XmppChatMember
+    implements ChatRoomMember
 {
     /**
      * The logger
      */
-    static final private Logger logger = Logger.getLogger(ChatMemberImpl.class);
+    static final private Logger logger = new LoggerImpl(ChatMemberImpl.class.getName());
 
     /**
      * The resource part of this {@link ChatMemberImpl}'s JID in the MUC.
@@ -87,12 +83,7 @@ public class ChatMemberImpl
      */
     private boolean robot = false;
 
-    private ChatRoomMemberRole role;
-
-    /**
-     * Stores video muted status if any.
-     */
-    private Boolean videoMuted;
+    private MemberRole role;
 
     /**
      * Stores statistics ID for the member.
@@ -108,12 +99,6 @@ public class ChatMemberImpl
         this.joinOrderNumber = joinOrderNumber;
     }
 
-    @Override
-    public ChatRoom getChatRoom()
-    {
-        return chatRoom;
-    }
-
     /**
      * {@inheritDoc}
      */
@@ -121,18 +106,6 @@ public class ChatMemberImpl
     public Presence getPresence()
     {
         return presence;
-    }
-
-    @Override
-    public ProtocolProviderService getProtocolProvider()
-    {
-        return chatRoom.getParentProvider();
-    }
-
-    @Override
-    public String getContactAddress()
-    {
-        return occupantJid.toString();
     }
 
     public EntityFullJid getOccupantJid()
@@ -151,19 +124,7 @@ public class ChatMemberImpl
     }
 
     @Override
-    public byte[] getAvatar()
-    {
-        return new byte[0];
-    }
-
-    @Override
-    public Contact getContact()
-    {
-        return null;
-    }
-
-    @Override
-    public ChatRoomMemberRole getRole()
+    public MemberRole getRole()
     {
         if (this.role == null)
         {
@@ -171,16 +132,13 @@ public class ChatMemberImpl
 
             if (o == null)
             {
-                return ChatRoomMemberRole.GUEST;
+                return MemberRole.GUEST;
             }
             else
             {
-                this.role
-                    = ChatRoomJabberImpl.smackRoleToScRole(
-                        o.getRole(), o.getAffiliation());
+                this.role = MemberRole.fromSmack(o.getRole(), o.getAffiliation());
             }
         }
-
         return this.role;
     }
 
@@ -194,21 +152,9 @@ public class ChatMemberImpl
     }
 
     @Override
-    public void setRole(ChatRoomMemberRole role)
+    public void setRole(MemberRole role)
     {
         throw new RuntimeException("Not implemented yet.");
-    }
-
-    @Override
-    public PresenceStatus getPresenceStatus()
-    {
-        return GlobalStatusEnum.ONLINE;
-    }
-
-    @Override
-    public String getDisplayName()
-    {
-        return null;
     }
 
     @Override
@@ -225,12 +171,6 @@ public class ChatMemberImpl
     public int getJoinOrderNumber()
     {
         return joinOrderNumber;
-    }
-
-    @Override
-    public Boolean hasVideoMuted()
-    {
-        return videoMuted;
     }
 
     /**
@@ -262,67 +202,41 @@ public class ChatMemberImpl
 
         this.presence = presence;
 
-        VideoMutedExtension videoMutedExt
-            = presence.getExtension(
-                VideoMutedExtension.ELEMENT_NAME,
-                VideoMutedExtension.NAMESPACE);
-
-        if (videoMutedExt != null)
-        {
-            Boolean newStatus = videoMutedExt.isVideoMuted();
-            if (newStatus != videoMuted)
-            {
-                logger.debug(
-                    getContactAddress() + " video muted: " + newStatus);
-
-                videoMuted = newStatus;
-            }
-        }
-
         UserInfoPacketExt userInfoPacketExt
-            = presence.getExtension(
-                    UserInfoPacketExt.ELEMENT_NAME,
-                    UserInfoPacketExt.NAMESPACE);
+            = presence.getExtension(UserInfoPacketExt.ELEMENT_NAME, UserInfoPacketExt.NAMESPACE);
         if (userInfoPacketExt != null)
         {
             Boolean newStatus = userInfoPacketExt.isRobot();
             if (newStatus != null && this.robot != newStatus)
             {
-                logger.debug(getContactAddress() +" robot: " + robot);
+                logger.debug(getName() +" robot: " + robot);
 
                 this.robot = newStatus;
             }
         }
 
         RegionPacketExtension regionPE
-            = presence.getExtension(
-                    RegionPacketExtension.ELEMENT_NAME,
-                    RegionPacketExtension.NAMESPACE);
+            = presence.getExtension(RegionPacketExtension.ELEMENT_NAME, RegionPacketExtension.NAMESPACE);
         if (regionPE != null)
         {
             region = regionPE.getRegionId();
         }
 
         StartMutedPacketExtension ext
-            = presence.getExtension(
-            StartMutedPacketExtension.ELEMENT_NAME,
-            StartMutedPacketExtension.NAMESPACE);
+            = presence.getExtension(StartMutedPacketExtension.ELEMENT_NAME, StartMutedPacketExtension.NAMESPACE);
 
         if (ext != null)
         {
-            boolean[] startMuted
-                = { ext.getAudioMuted(), ext.getVideoMuted() };
+            boolean[] startMuted = { ext.getAudioMuted(), ext.getVideoMuted() };
 
-            if (getRole().compareTo(ChatRoomMemberRole.MODERATOR) < 0)
+            // XXX Is this intended to be allowed for moderators or not?
+            if (getRole().hasAdministratorRights())
             {
                 chatRoom.setStartMuted(startMuted);
             }
         }
 
-        StatsId statsIdPacketExt
-            = presence.getExtension(
-                    StatsId.ELEMENT_NAME,
-                    StatsId.NAMESPACE);
+        StatsId statsIdPacketExt = presence.getExtension(StatsId.ELEMENT_NAME, StatsId.NAMESPACE);
         if (statsIdPacketExt != null)
         {
             statsId = statsIdPacketExt.getStatsId();
@@ -353,7 +267,6 @@ public class ChatMemberImpl
     @Override
     public String toString()
     {
-        return String.format(
-            "ChatMember[%s, jid: %s]@%s", occupantJid, jid, hashCode());
+        return String.format("ChatMember[%s, jid: %s]@%s", occupantJid, jid, hashCode());
     }
 }

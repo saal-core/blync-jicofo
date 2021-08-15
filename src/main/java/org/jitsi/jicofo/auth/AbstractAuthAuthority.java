@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,16 +17,15 @@
  */
 package org.jitsi.jicofo.auth;
 
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
 
-import org.jitsi.osgi.*;
+import org.jetbrains.annotations.*;
 import org.jitsi.xmpp.extensions.jitsimeet.*;
 import org.jitsi.jicofo.*;
-import org.jitsi.jicofo.event.*;
-import org.jitsi.utils.logging.*;
-import org.jitsi.eventadmin.*;
+import org.jitsi.utils.logging2.*;
 import org.jivesoftware.smack.packet.*;
 
 import org.jxmpp.jid.*;
@@ -44,8 +43,7 @@ public abstract class AbstractAuthAuthority
     /**
      * The logger.
      */
-    private final static Logger logger
-        = Logger.getLogger(AbstractAuthAuthority.class);
+    private final static Logger logger = new LoggerImpl(AbstractAuthAuthority.class.getName());
 
     /**
      * Interval at which we check for authentication sessions expiration.
@@ -61,22 +59,12 @@ public abstract class AbstractAuthAuthority
      * If set to <tt>true</tt> authentication session will be destroyed
      * immediately after end of the conference for which it was created.
      */
-    private final boolean disableAutoLogin;
-
-    /**
-     * <tt>EventAdmin</tt> instance used for firing events.
-     */
-    private EventAdmin eventAdmin;
+    private final boolean enableAutoLogin;
 
     /**
      * The timer used to check for the expiration of authentication sessions.
      */
     private Timer expireTimer;
-
-    /**
-     * The instance of <tt>FocusManager</tt> service.
-     */
-    private FocusManager focusManager;
 
     /**
      * Synchronization root.
@@ -100,43 +88,28 @@ public abstract class AbstractAuthAuthority
     /**
      * The list of registered {@link AuthenticationListener}s.
      */
-    private List<AuthenticationListener> authenticationListeners
+    private final List<AuthenticationListener> authenticationListeners
             = new CopyOnWriteArrayList<>();
 
     /**
      * Creates new instance of <tt>AbstractAuthAuthority</tt>.
      *
-     * @param disableAutoLogin disables auto login feature. Authentication
+     * @param enableAutoLogin disables auto login feature. Authentication
      * sessions are destroyed immediately when the conference ends.
      * @param authenticationLifetime specifies how long authentication sessions
      * will be stored in Jicofo's memory. Interval in milliseconds.
      */
-    public AbstractAuthAuthority(boolean disableAutoLogin,
-                                 long authenticationLifetime)
+    public AbstractAuthAuthority(boolean enableAutoLogin, Duration authenticationLifetime)
     {
-        this.disableAutoLogin = disableAutoLogin;
-        this.authenticationLifetime = authenticationLifetime;
+        this.enableAutoLogin = enableAutoLogin;
+        this.authenticationLifetime = authenticationLifetime.toMillis();
 
-        if (disableAutoLogin)
+        if (!enableAutoLogin)
         {
             logger.info("Auto login disabled");
         }
 
         logger.info("Authentication lifetime: " + authenticationLifetime);
-    }
-
-    /**
-     * Returns <tt>EventAdmin</tt> service instance(if any).
-     */
-    EventAdmin getEventAdmin()
-    {
-        if (eventAdmin == null)
-        {
-            eventAdmin = ServiceUtils2.getService(
-                    AuthBundleActivator.bundleContext,
-                    EventAdmin.class);
-        }
-        return eventAdmin;
     }
 
     /**
@@ -166,16 +139,10 @@ public abstract class AbstractAuthAuthority
      *                     used in new session.
      * @param roomName the name of the conference for which the session will be
      *                 created
-     * @param properties the list of authentication properties provided during
-     *                   authentication which will be sent in 'authentication
-     *                   session created' event. This is authentication provider
-     *                   depended and can be left empty.
-     *
      * @return new <tt>AuthenticationSession</tt> for given parameters.
      */
     protected AuthenticationSession createNewSession(
-            String machineUID, String authIdentity, EntityBareJid roomName,
-            Map<String, String> properties)
+            String machineUID, String authIdentity, EntityBareJid roomName)
     {
         synchronized (syncRoot)
         {
@@ -188,34 +155,9 @@ public abstract class AbstractAuthAuthority
 
             authenticationSessions.put(session.getSessionId(), session);
 
-            logger.info(
-                "Authentication session created for "
-                        + authIdentity + " SID: " + session.getSessionId());
-
-            if (properties != null)
-            {
-                logEvent(
-                        EventFactory.authSessionCreated(
-                                session.getSessionId(),
-                                session.getUserIdentity(),
-                                session.getMachineUID(),
-                                properties));
-            }
+            logger.info("Authentication session created for " + authIdentity + " SID: " + session.getSessionId());
 
             return session;
-        }
-    }
-
-    private void logEvent(Event event)
-    {
-        EventAdmin eventAdmin = getEventAdmin();
-        if (eventAdmin != null)
-        {
-            eventAdmin.postEvent(event);
-        }
-        else
-        {
-            logger.error("Unable to log events - no EventAdmin service found");
         }
     }
 
@@ -332,10 +274,6 @@ public abstract class AbstractAuthAuthority
             if (authenticationSessions.remove(sessionId) != null)
             {
                 logger.info("Authentication removed: " + session);
-
-                // Generate "authentication session destroyed" event
-                logEvent(EventFactory.authSessionDestroyed(sessionId));
-
             }
         }
     }
@@ -346,7 +284,7 @@ public abstract class AbstractAuthAuthority
     @Override
     public void onFocusDestroyed(EntityBareJid roomName)
     {
-        if (!disableAutoLogin)
+        if (enableAutoLogin)
         {
             return;
         }
@@ -490,11 +428,9 @@ public abstract class AbstractAuthAuthority
     {
         session.setUserJabberId(peerJid);
 
-        logger.info(
-            "Authenticated jid: " + peerJid + " with session: " + session);
+        logger.info("Authenticated jid: " + peerJid + " with session: " + session);
 
-        notifyUserAuthenticated(
-            peerJid, session.getUserIdentity(), session.getSessionId());
+        notifyUserAuthenticated(peerJid, session.getUserIdentity(), session.getSessionId());
 
         // Re-new session activity timestamp
         session.touch();
@@ -508,6 +444,7 @@ public abstract class AbstractAuthAuthority
      * {@inheritDoc}
      */
     @Override
+    @NotNull
     public IQ processLogoutIq(LogoutIq iq)
     {
         //String peerJid = iq.getFrom();
@@ -520,7 +457,7 @@ public abstract class AbstractAuthAuthority
 
         LogoutIq result = new LogoutIq();
 
-        result.setType(org.jivesoftware.smack.packet.IQ.Type.result);
+        result.setType(IQ.Type.result);
         result.setStanzaId(iq.getStanzaId());
         result.setFrom(iq.getTo());
         result.setTo(iq.getFrom());
@@ -550,14 +487,7 @@ public abstract class AbstractAuthAuthority
     public void start()
     {
         expireTimer = new Timer("AuthenticationExpireTimer", true);
-        expireTimer.scheduleAtFixedRate(
-            new ExpireTask(), EXPIRE_POLLING_INTERVAL, EXPIRE_POLLING_INTERVAL);
-
-        focusManager
-            = ServiceUtils2.getService(
-                    AuthBundleActivator.bundleContext, FocusManager.class);
-
-        focusManager.setFocusAllocationListener(this);
+        expireTimer.scheduleAtFixedRate(new ExpireTask(), EXPIRE_POLLING_INTERVAL, EXPIRE_POLLING_INTERVAL);
     }
 
     /**
@@ -565,12 +495,6 @@ public abstract class AbstractAuthAuthority
      */
     public void stop()
     {
-        if (focusManager != null)
-        {
-            focusManager.setFocusAllocationListener(null);
-            focusManager = null;
-        }
-
         if (expireTimer != null)
         {
             expireTimer.cancel();

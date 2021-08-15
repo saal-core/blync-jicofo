@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,18 +17,19 @@
  */
 package org.jitsi.jicofo;
 
-import net.java.sip.communicator.service.protocol.*;
+import org.jitsi.impl.protocol.xmpp.*;
+import org.jitsi.jicofo.codec.*;
+import org.jitsi.jicofo.xmpp.*;
 import org.jitsi.protocol.xmpp.colibri.exception.*;
 import org.jitsi.xmpp.extensions.colibri.*;
 import org.jitsi.xmpp.extensions.jingle.*;
 import org.jitsi.xmpp.extensions.jingle.JingleUtils;
 import org.jitsi.xmpp.extensions.jitsimeet.*;
 import org.jitsi.jicofo.discovery.*;
-import org.jitsi.jicofo.util.*;
 import org.jitsi.protocol.xmpp.*;
 import org.jitsi.protocol.xmpp.util.*;
-import org.jitsi.utils.*;
-import org.jitsi.utils.logging.*;
+import org.jitsi.utils.logging2.*;
+import org.jivesoftware.smack.*;
 import org.jxmpp.jid.*;
 
 import java.util.*;
@@ -44,18 +45,6 @@ import java.util.*;
  */
 public class ParticipantChannelAllocator extends AbstractChannelAllocator
 {
-    /**
-     * The class logger which can be used to override logging level inherited
-     * from {@link JitsiMeetConference}.
-     */
-    private final static Logger classLogger
-        = Logger.getLogger(ParticipantChannelAllocator.class);
-
-    /**
-     * The logger for this instance. Uses the logging level either of the
-     * {@link #classLogger} or {@link JitsiMeetConference#getLogger()}
-     * whichever is higher.
-     */
     private final Logger logger;
 
     /**
@@ -71,11 +60,13 @@ public class ParticipantChannelAllocator extends AbstractChannelAllocator
             JitsiMeetConferenceImpl.BridgeSession bridgeSession,
             Participant participant,
             boolean[] startMuted,
-            boolean reInvite)
+            boolean reInvite,
+            Logger parentLogger)
     {
-        super(meetConference, bridgeSession, participant, startMuted, reInvite);
+        super(meetConference, bridgeSession, participant, startMuted, reInvite, parentLogger);
         this.participant = participant;
-        this.logger = Logger.getLogger(classLogger, meetConference.getLogger());
+        logger = parentLogger.createChildLogger(getClass().getName());
+        logger.addContext("participant", participant.getChatMember().getName());
     }
 
     /**
@@ -85,50 +76,17 @@ public class ParticipantChannelAllocator extends AbstractChannelAllocator
     protected List<ContentPacketExtension> createOffer()
         throws UnsupportedFeatureConfigurationException
     {
-        EntityFullJid address = participant.getMucJid();
-
         // Feature discovery
-        List<String> features = DiscoveryUtil.discoverParticipantFeatures(
-            meetConference.getXmppProvider(), address);
+        List<String> features = meetConference.getClientXmppProvider().discoverFeatures(participant.getMucJid());
         participant.setSupportedFeatures(features);
-
-        List<ContentPacketExtension> contents = new ArrayList<>();
 
         JitsiMeetConfig config = meetConference.getConfig();
 
-        boolean useIce = participant.hasIceSupport();
-        boolean useDtls = participant.hasDtlsSupport();
-        // TODO We have a single `config` for the conference, but the rtx flag
-        // is per participant. Perhaps we should have each participant have its
-        // own config.
-        boolean useRtx
-            = config.isRtxEnabled() && participant.hasRtxSupport();
+        OfferOptions offerOptions = new OfferOptions();
+        OfferOptionsKt.applyConstraints(offerOptions, config);
+        OfferOptionsKt.applyConstraints(offerOptions, participant);
 
-        JingleOfferFactory jingleOfferFactory
-            = FocusBundleActivator.getJingleOfferFactory();
-
-        if (participant.hasAudioSupport())
-        {
-            contents.add(
-                jingleOfferFactory.createAudioContent(useIce, useDtls, config));
-        }
-
-        if (participant.hasVideoSupport())
-        {
-            contents.add(
-                jingleOfferFactory.createVideoContent(
-                    useIce, useDtls, useRtx, config));
-        }
-
-        // Is SCTP enabled ?
-        boolean openSctp = config.openSctp() == null || config.openSctp();
-        if (openSctp && participant.hasSctpSupport())
-        {
-            contents.add(
-                jingleOfferFactory.createDataContent(useIce, useDtls));
-        }
-
-        return contents;
+        return JingleOfferFactory.INSTANCE.createOffer(offerOptions);
     }
 
     /**
@@ -151,7 +109,7 @@ public class ParticipantChannelAllocator extends AbstractChannelAllocator
      */
     @Override
     protected void invite(List<ContentPacketExtension> offer)
-        throws OperationFailedException
+        throws SmackException.NotConnectedException
     {
         /*
            This check makes sure that when we're trying to invite
@@ -221,12 +179,12 @@ public class ParticipantChannelAllocator extends AbstractChannelAllocator
      * @param address the destination JID.
      * @param contents the list of contents to include.
      * @return {@code false} on failure.
-     * @throws OperationFailedException if we are unable to send a packet
-     * because the XMPP connection is broken.
+     * @throws SmackException.NotConnectedException if we are unable to send a packet because the XMPP connection is not
+     * connected.
      */
     private boolean doInviteOrReinvite(
         Jid address, List<ContentPacketExtension> contents)
-        throws OperationFailedException
+        throws SmackException.NotConnectedException
     {
         OperationSetJingle jingle = meetConference.getJingle();
         JingleSession jingleSession = participant.getJingleSession();
@@ -237,18 +195,17 @@ public class ParticipantChannelAllocator extends AbstractChannelAllocator
         if (initiateSession)
         {
             // will throw OperationFailedExc if XMPP connection is broken
-            jingleIQ = jingle.createSessionInitiate(address, contents);
+            jingleIQ = JingleUtilsKt.createSessionInitiate(jingle.getOurJID(), address, contents);
         }
         else
         {
-            jingleIQ = jingle.createTransportReplace(jingleSession, contents);
+            jingleIQ = JingleUtilsKt.createTransportReplace(jingle.getOurJID(), jingleSession, contents);
         }
 
         JicofoJingleUtils.addBundleExtensions(jingleIQ);
         if (startMuted[0] || startMuted[1])
         {
-            JicofoJingleUtils.addStartMutedExtension(
-                jingleIQ, startMuted[0], startMuted[1]);
+            JicofoJingleUtils.addStartMutedExtension(jingleIQ, startMuted[0], startMuted[1]);
         }
 
         // Include info about the BridgeSession which provides the transport

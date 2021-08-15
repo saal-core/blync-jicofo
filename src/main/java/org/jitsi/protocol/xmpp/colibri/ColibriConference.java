@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,15 +17,14 @@
  */
 package org.jitsi.protocol.xmpp.colibri;
 
+import org.jetbrains.annotations.*;
 import org.jitsi.protocol.xmpp.colibri.exception.*;
+import org.jitsi.utils.*;
 import org.jitsi.xmpp.extensions.colibri.*;
 import org.jitsi.xmpp.extensions.jingle.*;
-import net.java.sip.communicator.service.protocol.*;
 
-import org.jitsi.jicofo.*;
 import org.jitsi.protocol.xmpp.util.*;
 import org.jxmpp.jid.*;
-import org.jxmpp.jid.parts.*;
 
 import java.util.*;
 
@@ -46,11 +45,7 @@ public interface ColibriConference
      */
     void setJitsiVideobridge(Jid videobridgeJid);
 
-    /**
-     * Returns XMPP address of currently used videobridge or <tt>null</tt>
-     * if the isn't any.
-     */
-    Jid getJitsiVideobridge();
+    void setMeetingId(@NotNull String meetingId);
 
     /**
      * Returns the identifier assigned for our conference by the videobridge.
@@ -60,24 +55,16 @@ public interface ColibriConference
     String getConferenceId();
 
     /**
-     * Sets Jitsi Meet config that provides Colibri channels configurable
-     * properties.
-     * @param config <tt>JitsiMeetConfig</tt> to be used for allocating
-     * Colibri channels in this conference.
-     */
-    void setConfig(JitsiMeetConfig config);
-
-    /**
      * Sets world readable name that identifies the conference.
      * @param name the new name.
      */
-    void setName(Localpart name);
+    void setName(EntityBareJid name);
 
     /**
      * Gets world readable name that identifies the conference.
      * @return the name.
      */
-    Localpart getName();
+    EntityBareJid getName();
 
     /**
      * Returns <tt>true</tt> if conference has been allocated during last
@@ -99,14 +86,12 @@ public interface ColibriConference
      * of ICE session.
      * @param contents content list that describes peer media.
      * @return <tt>ColibriConferenceIQ</tt> that describes allocated channels.
-     *
-     * @throws OperationFailedException if channel allocation fails.
      */
     default ColibriConferenceIQ createColibriChannels(
-        String endpointId,
-        String statsId,
-        boolean peerIsInitiator,
-        List<ContentPacketExtension> contents)
+            String endpointId,
+            String statsId,
+            boolean peerIsInitiator,
+            List<ContentPacketExtension> contents)
         throws ColibriException
     {
         return createColibriChannels(
@@ -171,10 +156,10 @@ public interface ColibriConference
      * content described by <tt>localChannelsInfo</tt>.
      */
     default void updateChannelsInfo(
-        ColibriConferenceIQ localChannelsInfo,
-        Map<String, RtpDescriptionPacketExtension> rtpInfoMap,
-        MediaSourceMap sources,
-        MediaSourceGroupMap sourceGroups)
+            ColibriConferenceIQ localChannelsInfo,
+            Map<String, RtpDescriptionPacketExtension> rtpInfoMap,
+            MediaSourceMap sources,
+            MediaSourceGroupMap sourceGroups)
     {
         updateChannelsInfo(
             localChannelsInfo,
@@ -265,16 +250,17 @@ public interface ColibriConference
     void expireConference();
 
     /**
-     * Mutes audio channels described in given IQ by changing their media
-     * direction to {@link org.jitsi.service.neomedia.MediaDirection#SENDONLY}.
+     * Mutes audio  or video channels described in given IQ by changing their media
+     * direction to {@code sendonly}.
      * @param channelsInfo the IQ that describes the channels to be muted.
-     * @param mute <tt>true</tt> to mute or <tt>false</tt> to unmute audio
-     * channels described in <tt>channelsInfo</tt>.
+     * @param mute <tt>true</tt> to mute or <tt>false</tt> to unmute channels 
+     * described in <tt>channelsInfo</tt>.
+     * @param mediaType optional mediaType of the channel to mute; defaults to audio.
      * @return <tt>true</tt> if the operation has succeeded or <tt>false</tt>
      * otherwise.
      */
-    boolean muteParticipant(ColibriConferenceIQ channelsInfo, boolean mute);
-
+    boolean muteParticipant(ColibriConferenceIQ channelsInfo, boolean mute, MediaType mediaType);
+    
     /**
      * Disposes of any resources allocated by this instance. Once disposed this
      * instance must not be used anymore.

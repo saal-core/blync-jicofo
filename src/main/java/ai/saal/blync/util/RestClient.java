@@ -14,6 +14,7 @@ public class RestClient {
     public static ValidationRes invokeHostValidation(String url, Object payload){
 
         Client client = ClientBuilder.newClient();
+
         return client
                 .target(url)
                 .request(MediaType.APPLICATION_JSON)

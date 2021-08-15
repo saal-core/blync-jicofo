@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2015 Atlassian Pty Ltd
+ * Copyright @ 2015-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,12 +17,17 @@
  */
 package org.jitsi.jicofo;
 
-import org.jitsi.cmd.*;
-import org.jitsi.jicofo.osgi.*;
-import org.jitsi.jicofo.xmpp.*;
-import org.jitsi.meet.*;
-import org.jitsi.utils.logging.*;
 import ai.saal.blync.util.BlyncUrl;
+import kotlin.jvm.functions.*;
+import org.jetbrains.annotations.*;
+import org.jitsi.cmd.*;
+import org.jitsi.config.*;
+import org.jitsi.jicofo.xmpp.*;
+import org.jitsi.metaconfig.*;
+import org.jitsi.shutdown.*;
+import org.jitsi.utils.*;
+import org.jitsi.utils.logging2.*;
+
 import static org.apache.commons.lang3.StringUtils.*;
 
 /**
@@ -32,127 +37,61 @@ import static org.apache.commons.lang3.StringUtils.*;
  */
 public class Main
 {
-    private static Logger logger = Logger.getLogger(Main.class);
-
-    /**
-     * The name of the command-line argument which specifies the XMPP domain
-     * to use for the XMPP client connection.
-     */
-    private static final String DOMAIN_ARG_NAME = "domain";
-
-    /**
-     * The name of the command-line argument which specifies the name of XMPP
-     * domain used by focus user to login.
-     */
-    private static final String USER_DOMAIN_ARG_NAME = "--user_domain";
-
-    /**
-     * The name of the command-line argument which specifies the name of XMPP
-     * user name to be used by the focus user('focus' by default).
-     */
-    private static final String USER_NAME_ARG_NAME = "--user_name";
-
-    /**
-     * Default value for {@link #USER_NAME_ARG_NAME}.
-     */
-    private static final String USER_NAME_ARG_VALUE = "focus";
-
-    /**
-     * The name of the command-line argument which specifies the password used
-     * by focus XMPP user to login. If neither this argument nor the environment
-     * variable named by {@link #USER_PASSWORD_ENV_NAME} is provided then focus
-     * will use anonymous authentication method.
-     */
-    private static final String USER_PASSWORD_ARG_NAME = "--user_password";
-
-    /**
-     * The name of the environment variable which, when set and not an empty
-     * string, acts as an alternative to the command-line argument named by
-     * {@link #USER_PASSWORD_ARG_NAME}.
-     */
-    private static final String USER_PASSWORD_ENV_NAME = "JICOFO_AUTH_PASSWORD";
-
-    /**
-     * The name of the command-line argument which specifies the IP address or
-     * the name of the XMPP host to connect to.
-     */
-    private static final String HOST_ARG_NAME = "--host";
-
-    /**
-     * The default value of the {@link #HOST_ARG_NAME} command-line argument if
-     * it is not explicitly provided.
-     */
-    private static final String HOST_ARG_VALUE = "localhost";
-
-    /**
-     * The name of the command-line argument which specifies the port of the
-     * XMPP host to connect on.
-     */
-    private static final String PORT_ARG_NAME = "--port";
-
-    /**
-     * The default value of the {@link #PORT_ARG_NAME} command-line argument if
-     * it is not explicitly provided.
-     */
-    private static final int PORT_ARG_VALUE = 5347;
-
-    /**
-     * The name of the command-line argument which specifies the secret key for
-     * the sub-domain of the Jabber component implemented by this application
-     * with which it is to authenticate to the XMPP server to connect to. This
-     * secret can alternatively be specified using an environment variable; see
-     * {@link #SECRET_ENV_NAME}.
-     */
-    private static final String SECRET_ARG_NAME = "--secret";
-
-    /**
-     * The name of the environment variable which, when set and not an empty
-     * string, acts as an alternative to the command-line argument named by
-     * {@link #SECRET_ARG_NAME}.
-     */
-    private static final String SECRET_ENV_NAME = "JICOFO_SECRET";
-
-    /**
-     * The name of the command-line argument which specifies sub-domain name for
-     * the focus component.
-     */
-    private static final String SUBDOMAIN_ARG_NAME = "--subdomain";
-
-    /**
-     * The name of the command-line argument which specifies sub-domain name for
-     * the focus component.
-     */
-    private static final String SUBDOMAIN_ARG_VALUE = "focus";
-
-    /**
-     * Stores {@link FocusComponent} instance for the health check purpose.
-     */
-    private static FocusComponent focusXmppComponent;
-
-    /**
-     * @return the Jicofo XMPP component.
-     */
-    public static FocusComponent getFocusXmppComponent()
-    {
-        return focusXmppComponent;
-    }
+    private static final Logger logger = new LoggerImpl(Main.class.getName());
 
     /**
      * Program entry point.
+     *
      * @param args command-line arguments.
      */
     public static void main(String[] args)
-        throws ParseException
+            throws ParseException
     {
+        logger.info("Starting Jicofo.");
+
         Thread.setDefaultUncaughtExceptionHandler((t, e) ->
-            logger.error("An uncaught exception occurred in thread=" + t, e));
+                logger.error("An uncaught exception occurred in thread=" + t, e));
 
-        CmdLine cmdLine = new CmdLine();
+        setupMetaconfigLogger();
+        setSystemProperties(args);
+        JitsiConfig.Companion.reloadNewConfig();
 
-        if (isBlank(System.getenv(SECRET_ENV_NAME)))
+        // Make sure that passwords are not printed by ConfigurationService
+        // on startup by setting password regExpr and cmd line args list
+        ConfigUtils.PASSWORD_SYS_PROPS = "pass";
+        ConfigUtils.PASSWORD_CMD_LINE_ARGS = "user_password";
+
+
+        ShutdownServiceImpl shutdownService = new ShutdownServiceImpl();
+        // Register shutdown hook to perform cleanup before exit
+        Runtime.getRuntime().addShutdownHook(new Thread(shutdownService::beginShutdown));
+
+        JicofoServices jicofoServices = new JicofoServices();
+        JicofoServices.jicofoServicesSingleton = jicofoServices;
+
+        try
         {
-            cmdLine.addRequiredArgument(SECRET_ARG_NAME);
+            shutdownService.waitForShutdown();
         }
+        catch (Exception e)
+        {
+            logger.error(e, e);
+        }
+
+        logger.info("Stopping services.");
+        jicofoServices.stop();
+        TaskPools.shutdown();
+        JicofoServices.jicofoServicesSingleton = null;
+    }
+
+    /**
+     * Read the command line arguments and env variables, and set the corresponding system properties used for
+     * configuration of the XMPP component and client connections.
+     */
+    private static void setSystemProperties(String[] args)
+            throws ParseException
+    {
+        CmdLine cmdLine = new CmdLine();
 
         // We may end execution here if one of required arguments is missing
         cmdLine.parse(args);
@@ -161,70 +100,82 @@ public class Main
         String host;
         String componentDomain;
         // Try to get domain, can be null after this call(we'll fix that later)
-        componentDomain = cmdLine.getOptionValue(DOMAIN_ARG_NAME);
+        componentDomain = cmdLine.getOptionValue("domain");
+
+        System.out.println("#"+componentDomain);
         // Host name
-        host = cmdLine.getOptionValue(
-                HOST_ARG_NAME,
-                componentDomain == null ? HOST_ARG_VALUE : componentDomain);
+        host = cmdLine.getOptionValue("--host", componentDomain == null ? "localhost" : componentDomain);
+        System.out.println('#'+host);
         // Try to fix component domain
         if (isBlank(componentDomain))
         {
             componentDomain = host;
         }
+        if (componentDomain != null)
+        {
+            // For backward compat, the "--domain" command line argument controls the domain for the XMPP component
+            // as well as XMPP client connection.
+            System.setProperty(XmppClientConnectionConfig.legacyXmppDomainPropertyName, componentDomain);
+        }
+        if (host != null)
+        {
+            // For backward compat, the "--host" command line argument controls the hostname for the XMPP component
+            // as well as XMPP client connection.
+            System.setProperty(XmppClientConnectionConfig.legacyHostnamePropertyName, host);
+        }
+
+        // XMPP client connection
+        String focusDomain = cmdLine.getOptionValue("--user_domain");
+        String focusUserName = cmdLine.getOptionValue("--user_name");
+        String focusPassword = cmdLine.getOptionValue("--user_password");
+
         System.out.println("## CONFERENCE_MANAGER_URL => "+ cmdLine.getOptionValue("CONFERENCE_MANAGER_URL"));
         String blyncUrl =  cmdLine.getOptionValue("CONFERENCE_MANAGER_URL");
 
 
         BlyncUrl.setUrl(blyncUrl);
 
-        // Jicofo XMPP component
-        String componentSubDomain
-            = cmdLine.getOptionValue(
-                    SUBDOMAIN_ARG_NAME, SUBDOMAIN_ARG_VALUE);
-
-        int port = cmdLine.getIntOptionValue(PORT_ARG_NAME, PORT_ARG_VALUE);
-
-        String secret = cmdLine.getOptionValue(SECRET_ARG_NAME);
-        if (isBlank(secret))
-        {
-            secret = System.getenv(SECRET_ENV_NAME);
-        }
-
-        // Jicofo user
-        String focusDomain = cmdLine.getOptionValue(USER_DOMAIN_ARG_NAME);
-
-        String focusUserName
-            = cmdLine.getOptionValue(
-                    USER_NAME_ARG_NAME, USER_NAME_ARG_VALUE);
-
-        String focusPassword = cmdLine.getOptionValue(USER_PASSWORD_ARG_NAME);
         if (isBlank(focusPassword))
         {
-            focusPassword = System.getenv(USER_PASSWORD_ENV_NAME);
+            focusPassword = System.getenv("JICOFO_AUTH_PASSWORD");
         }
 
-        // Focus specific config properties
-        System.setProperty(FocusManager.HOSTNAME_PNAME, host);
-        System.setProperty(FocusManager.XMPP_DOMAIN_PNAME, componentDomain);
-        System.setProperty(FocusManager.FOCUS_USER_DOMAIN_PNAME, focusDomain);
-        System.setProperty(FocusManager.FOCUS_USER_NAME_PNAME, focusUserName);
+        if (focusDomain != null)
+        {
+            System.setProperty(XmppClientConnectionConfig.legacyDomainPropertyName, focusDomain);
+        }
+        if (focusUserName != null)
+        {
+            System.setProperty(XmppClientConnectionConfig.legacyUsernamePropertyName, focusUserName);
+        }
         if (isNotBlank(focusPassword))
         {
-            System.setProperty(
-                    FocusManager.FOCUS_USER_PASSWORD_PNAME, focusPassword);
+            System.setProperty(XmppClientConnectionConfig.legacyPasswordPropertyName, focusPassword);
         }
+    }
 
-        ComponentMain componentMain = new ComponentMain();
+    private static void setupMetaconfigLogger()
+    {
+        Logger configLogger = new LoggerImpl("org.jitsi.config");
+        MetaconfigSettings.Companion.setLogger(new MetaconfigLogger()
+        {
+            @Override
+            public void warn(@NotNull Function0<String> function0)
+            {
+                configLogger.warn(function0::invoke);
+            }
 
-        boolean focusAnonymous = isBlank(focusPassword);
+            @Override
+            public void error(@NotNull Function0<String> function0)
+            {
+                configLogger.error(function0::invoke);
+            }
 
-        focusXmppComponent
-            = new FocusComponent(
-                    host, port, componentDomain, componentSubDomain,
-                    secret, focusAnonymous, focusUserName + "@" + focusDomain);
-
-        JicofoBundleConfig osgiBundles = new JicofoBundleConfig();
-
-        componentMain.runMainProgramLoop(focusXmppComponent, osgiBundles);
+            @Override
+            public void debug(@NotNull Function0<String> function0)
+            {
+                configLogger.debug(function0::invoke);
+            }
+        });
     }
 }

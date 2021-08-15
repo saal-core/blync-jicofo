@@ -1,7 +1,7 @@
 /*
  * Jicofo, the Jitsi Conference Focus.
  *
- * Copyright @ 2016 Atlassian Pty Ltd
+ * Copyright @ 2016-Present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,9 @@
  */
 package org.jitsi.jicofo;
 
-import net.java.sip.communicator.service.protocol.*;
+import org.jitsi.impl.protocol.xmpp.*;
 import org.jitsi.jicofo.bridge.*;
-import org.jitsi.jicofo.recording.jibri.*;
-import org.jitsi.protocol.xmpp.*;
-import org.jitsi.utils.logging.*;
+import org.jitsi.jicofo.xmpp.muc.*;
 import org.jxmpp.jid.*;
 
 import java.util.*;
@@ -34,15 +32,6 @@ import java.util.*;
 public class MockJitsiMeetConference
     implements JitsiMeetConference
 {
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public Logger getLogger()
-    {
-        return null;
-    }
-
     /**
      * {@inheritDoc}
      */
@@ -65,13 +54,7 @@ public class MockJitsiMeetConference
     }
 
     @Override
-    public EntityFullJid getFocusJid()
-    {
-        return null;
-    }
-
-    @Override
-    public ChatRoom2 getChatRoom()
+    public ChatRoom getChatRoom()
     {
         return null;
     }
@@ -82,21 +65,9 @@ public class MockJitsiMeetConference
     }
 
     @Override
-    public JibriSessionStats getJibriSessionStats()
-    {
-        return new JibriSessionStats();
-    }
-
-    @Override
-    public ChatRoomMemberRole getRoleForMucJid(Jid jid)
+    public MemberRole getRoleForMucJid(Jid jid)
     {
         return null;
-    }
-
-    @Override
-    public boolean isFocusMember(Jid jid)
-    {
-        return false;
     }
 
     /**
